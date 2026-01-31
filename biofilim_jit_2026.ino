@@ -1,10 +1,10 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <DHT.h>
+#include "secrets.h"
 
 /* ================= WIFI ================= */
-const char* ssid = "Project";
-const char* password = "12345678";
+// Credentials moved to secrets.h
 
 /* ================= WEB ================= */
 WebServer server(80);

@@ -3,9 +3,15 @@ import joblib
 import numpy as np
 import time
 
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
 # ================= USER CONFIG =================
-ESP32_IP = "http://192.168.137.43/status"   # CHANGE THIS
-THINGSPEAK_API_KEY = "SVTQZGOJI19KVUJY" # CHANGE THIS
+ESP32_IP = os.getenv("ESP32_IP")
+THINGSPEAK_API_KEY = os.getenv("THINGSPEAK_API_KEY")
 THINGSPEAK_URL = "https://api.thingspeak.com/update"
 
 MODEL_PATH = "biofilm_risk_rf_regressor.pkl"
