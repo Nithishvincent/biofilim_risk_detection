@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Biofilm Risk Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+/* ========== THEME VARIABLES ========== */
+:root{
+  --bg-main:#f4fbff;
+  --bg-card:#ffffff;
+  --border:#dbe9f4;
+  --primary:#0077b6;
+  --secondary:#00b4d8;
+  --success:#2ecc71;
+  --warning:#f1c40f;
+  --danger:#e74c3c;
+  --text-main:#0b2c3d;
+  --text-muted:#5f7d8c;
+}
+
+[data-theme="dark"]{
+  --bg-main:#0e141a;
+  --bg-card:#141d26;
+  --border:#26323d;
+  --primary:#4fc3f7;
+  --secondary:#81d4fa;
+  --success:#27ae60;
+  --warning:#f1c40f;
+  --danger:#e74c3c;
+  --text-main:#e8f1f8;
+  --text-muted:#9fb3c8;
+}
+
+/* ========== BASE ========== */
+body{
+  margin:0;
+  font-family:"Segoe UI",sans-serif;
+  background:var(--bg-main);
+  color:var(--text-main);
+}
+
+.container{
+  width:95vw;
+  max-width:1600px;
+  margin:auto;
+  padding:24px;
+}
+
+/* ========== HEADER ========== */
+header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  border-bottom:2px solid var(--border);
+  padding-bottom:12px;
+}
+
+header h1{
+  margin:0;
+  font-size:26px;
+  color:var(--primary);
+}
+
+.header-right{
+  display:flex;
+  align-items:center;
+  gap:14px;
+}
+
+.system-status{
+  padding:6px 16px;
+  border-radius:20px;
+  font-weight:bold;
+}
+
+.system-active{background:var(--success);color:#fff;}
+.system-stale{background:var(--warning);color:#000;}
+.system-offline{background:var(--danger);color:#fff;}
+
+.theme-toggle{
+  border:none;
+  background:var(--secondary);
+  color:#fff;
+  padding:8px 14px;
+  border-radius:20px;
+  cursor:pointer;
+}
+
+/* ========== SECTIONS ========== */
+.top-section{
+  display:grid;
+  grid-template-columns:2fr 1fr;
+  gap:24px;
+  margin-top:24px;
+}
+
+@media(max-width:900px){
+  .top-section{grid-template-columns:1fr;}
+}
+
+.card{
+  background:var(--bg-card);
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:20px;
+}
+
+/* ========== HEALTH ========== */
+.health-track{
+  height:18px;
+  background:#e6f2fa;
+  border-radius:10px;
+  overflow:hidden;
+}
+
+[data-theme="dark"] .health-track{
+  background:#243241;
+}
+
+.health-fill{
+  height:100%;
+  width:0%;
+}
+
+#healthText{font-weight:bold}
+
+/* ========== RISK ========== */
+#risk{
+  font-size:46px;
+  font-weight:bold;
+  color:var(--primary);
+}
+
+.badge{
+  display:inline-block;
+  margin-top:8px;
+  padding:8px 18px;
+  border-radius:20px;
+  font-weight:bold;
+}
+
+.low{background:var(--success);color:#fff;}
+.medium{background:var(--warning);color:#000;}
+.high{background:var(--danger);color:#fff;}
+
+/* ========== PARAMETERS ========== */
+.params{
+  margin-top:25px;
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:16px;
+}
+
+@media(max-width:900px){
+  .params{grid-template-columns:repeat(2,1fr);}
+}
+
+.param-card{
+  background:var(--bg-card);
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:14px;
+}
+
+.param-card h4{
+  margin:0 0 6px;
+  color:var(--secondary);
+}
+
+.bar{
+  height:8px;
+  background:#e6f2fa;
+  border-radius:6px;
+  overflow:hidden;
+}
+
+[data-theme="dark"] .bar{
+  background:#243241;
+}
+
+.bar span{
+  display:block;
+  height:100%;
+  background:var(--secondary);
+}
+
+/* ========== INSIGHTS + DSS ========== */
+.mid-insights{
+  margin-top:25px;
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:16px;
+}
+
+@media(max-width:900px){
+  .mid-insights{grid-template-columns:repeat(2,1fr);}
+}
+
+.insight-card{
+  background:var(--bg-card);
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:18px;
+}
+
+.insight-card h4{
+  margin:0;
+  color:var(--primary);
+}
+
+.insight-card p{
+  font-size:18px;
+  font-weight:bold;
+  margin-top:8px;
+  color:var(--secondary);
+}
+
+/* ========== FOOTER ========== */
+footer{
+  text-align:center;
+  margin-top:16px;
+  font-size:13px;
+  color:var(--text-muted);
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<header>
+  <h1>Biofilm Risk Dashboard</h1>
+  <div class="header-right">
+    <div id="systemStatus" class="system-status">CHECKING…</div>
+    <button id="themeToggle" class="theme-toggle">🌙 Dark</button>
+  </div>
+</header>
+
+<!-- TOP -->
+<div class="top-section">
+  <div class="card">
+    <h3>Overall System Health</h3>
+    <div class="health-track"><div id="healthFill" class="health-fill"></div></div>
+    <p id="healthText">--%</p>
+  </div>
+
+  <div class="card">
+    <h3>Predicted Biofilm Risk</h3>
+    <div id="risk">--%</div>
+    <span id="riskBadge" class="badge">---</span>
+  </div>
+</div>
+
+<!-- PARAMETERS -->
+<div class="params">
+  <div class="param-card"><h4>pH</h4><div class="bar"><span id="phBar"></span></div><small id="ph">--</small></div>
+  <div class="param-card"><h4>Temperature</h4><div class="bar"><span id="tempBar"></span></div><small id="temp">--</small></div>
+  <div class="param-card"><h4>Flow</h4><div class="bar"><span id="flowBar"></span></div><small id="flow">--</small></div>
+  <div class="param-card"><h4>Turbidity</h4><div class="bar"><span id="turbBar"></span></div><small id="turb">--</small></div>
+  <div class="param-card"><h4>TDS</h4><div class="bar"><span id="tdsBar"></span></div><small id="tds">--</small></div>
+</div>
+
+<!-- INSIGHTS + DSS -->
+<div class="mid-insights">
+  <div class="insight-card"><h4>Biofilm Stage</h4><p id="stage">--</p></div>
+  <div class="insight-card"><h4>Confidence</h4><p id="confidence">--%</p></div>
+  <div class="insight-card"><h4>DSS Decision</h4><p id="dssDecision">--</p></div>
+  <div class="insight-card"><h4>Urgency</h4><p id="dssUrgency">--</p></div>
+  <div class="insight-card"><h4>Recommended Action</h4><p id="dssAction">--</p></div>
+  <div class="insight-card"><h4>Next Review</h4><p id="dssReview">--</p></div>
+</div>
+
+<footer id="lastUpdated">
+  Last updated: --
+</footer>
+
+</div>
+
+<script>
+const API_URL="https://api.thingspeak.com/channels/692657/feeds.json?results=10";
+let lastValidData=null;
+
+/* THEME TOGGLE */
+const btn=document.getElementById("themeToggle");
+const root=document.documentElement;
+function setTheme(t){
+  if(t==="dark"){
+    root.setAttribute("data-theme","dark");
+    btn.textContent="🌞 Light";
+  }else{
+    root.removeAttribute("data-theme");
+    btn.textContent="🌙 Dark";
+  }
+  localStorage.setItem("theme",t);
+}
+setTheme(localStorage.getItem("theme")||"light");
+btn.onclick=()=>setTheme(root.getAttribute("data-theme")==="dark"?"light":"dark");
+
+/* SYSTEM STATUS */
+function updateSystemStatus(createdAt){
+  const el=document.getElementById("systemStatus");
+  const now=new Date();
+  const last=new Date(createdAt);
+  const diff=(now-last)/60000;
+
+  el.className="system-status";
+
+  if(diff<1){
+    el.textContent="SYSTEM ACTIVE";
+    el.classList.add("system-active");
+  }else if(diff<5){
+    el.textContent="DATA STALE";
+    el.classList.add("system-stale");
+  }else{
+    el.textContent="SYSTEM OFFLINE";
+    el.classList.add("system-offline");
+  }
+
+  document.getElementById("lastUpdated").textContent =
+    "Last updated: " + last.toLocaleTimeString();
+}
+
+/* DSS */
+function runDSS(d){
+  const risk=Number(d.field7);
+  let score=0;
+  if(d.field5>5) score++;
+  if(d.field4<60) score++;
+  if(d.field6>500) score++;
+  if(d.field2>30) score++;
+
+  if(risk<30 && score<=1){
+    dssDecision.textContent="Normal Operation";
+    dssAction.textContent="No maintenance required";
+    dssUrgency.textContent="Low";
+    dssReview.textContent="After 24 hours";
+  }else if(risk<60 || score===2){
+    dssDecision.textContent="Preventive Maintenance";
+    dssAction.textContent="Schedule inspection & partial cleaning";
+    dssUrgency.textContent="Medium";
+    dssReview.textContent="Within 12 hours";
+  }else{
+    dssDecision.textContent="Corrective Action Required";
+    dssAction.textContent="Immediate cleaning & backwash";
+    dssUrgency.textContent="High";
+    dssReview.textContent="Within 1 hour";
+  }
+}
+
+/* UPDATE UI */
+function updateUI(d){
+  const risk=Number(d.field7);
+  const health=Math.max(0,100-risk);
+
+  healthFill.style.width=health+"%";
+  healthFill.style.background=health>70?"#2ecc71":health>40?"#f1c40f":"#e74c3c";
+  healthText.textContent=health+"%";
+
+  riskEl=risk;
+  risk.textContent=risk+"%";
+  riskBadge.className="badge "+(d.field8==1?"low":d.field8==2?"medium":"high");
+  riskBadge.textContent=d.field8==1?"LOW":d.field8==2?"MEDIUM":"HIGH";
+
+  ph.textContent=d.field1;
+  temp.textContent=d.field2;
+  flow.textContent=d.field4;
+  turb.textContent=d.field5;
+  tds.textContent=d.field6;
+
+  phBar.style.width=d.field1/14*100+"%";
+  tempBar.style.width=d.field2/50*100+"%";
+  flowBar.style.width=Math.max(0,100-d.field4)+"%";
+  turbBar.style.width=Math.min(d.field5*10,100)+"%";
+  tdsBar.style.width=Math.min(d.field6/10,100)+"%";
+
+  stage.textContent=risk<30?"Early Growth":risk<60?"Developing Biofilm":"Critical Biofilm";
+
+  let agree=0;
+  if(d.field5>5) agree++;
+  if(d.field4<60) agree++;
+  if(d.field6>500) agree++;
+  confidence.textContent=Math.min(100,agree*33)+"%";
+
+  runDSS(d);
+}
+
+/* FETCH DATA */
+async function fetchData(){
+  try{
+    const res=await fetch(API_URL);
+    const json=await res.json();
+    if(!json.feeds.length) return;
+
+    const latest=json.feeds.at(-1);
+    lastValidData=latest;
+
+    updateSystemStatus(latest.created_at);
+    updateUI(latest);
+
+  }catch(e){
+    if(lastValidData){
+      updateSystemStatus(lastValidData.created_at);
+      updateUI(lastValidData); // freeze last valid data
+    }
+  }
+}
+
+fetchData();
+setInterval(fetchData,5000);
+</script>
+
+</body>
+</html>
