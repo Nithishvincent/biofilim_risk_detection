@@ -205,7 +205,39 @@ export default function App() {
     setLastUpdated('Last updated: ' + last.toLocaleTimeString())
   }
 
+  /* MOCK DATA FOR DEMO */
+  const USE_MOCK_DATA = true
+  const MOCK_DATA = {
+    created_at: new Date().toISOString(),
+    field1: '7.2', // pH
+    field2: '32.5', // Temp (High)
+    field3: '55',   // Humidity
+    field4: '40',   // Flow (Low)
+    field5: '8.5',  // Turbidity (High)
+    field6: '600',  // TDS (High)
+    field7: '75.0', // Risk % (High)
+    field8: '3'     // Label Code (High)
+  }
+
   async function fetchData() {
+    if (USE_MOCK_DATA) {
+      // Simulate network delay
+      // await new Promise(r => setTimeout(r, 500))
+
+      const latest = MOCK_DATA
+      // Create a fake history for the chart based on the mock data
+      const fakeFeeds = Array(10).fill(null).map((_, i) => ({
+        ...latest,
+        created_at: new Date(Date.now() - (9 - i) * 5000).toISOString(),
+        field7: (Number(latest.field7) + (Math.random() * 4 - 2)).toFixed(1) // add jitter
+      }))
+
+      setFeeds(fakeFeeds)
+      updateSystemStatus(new Date().toISOString())
+      updateUI(latest, fakeFeeds.at(-2))
+      return
+    }
+
     try {
       const res = await fetch(API_URL)
       const json = await res.json()
@@ -227,6 +259,7 @@ export default function App() {
 
   useEffect(() => {
     fetchData()
+    // If using mock data, we don't strictly need to poll widely, but keeping it for animation is fine
     const id = setInterval(fetchData, 5000)
     return () => clearInterval(id)
   }, [])
