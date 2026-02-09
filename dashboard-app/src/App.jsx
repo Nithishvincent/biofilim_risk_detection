@@ -82,6 +82,34 @@ function getSystemStatus(createdAt) {
   return { text: 'SYSTEM OFFLINE', className: 'system-status system-offline' }
 }
 
+const CHEMICALS = {
+  chlorine: { name: 'Sodium Hypochlorite (12.5%)', unit: 'ml', rate: 50 }, // 50ml/1000L for shock
+  phPlus: { name: 'pH Plus (Sodium Carbonate)', unit: 'g', rate: 50 }, // 50g/1000L
+  phMinus: { name: 'pH Minus (Sodium Bisulfate)', unit: 'g', rate: 50 } // 50g/1000L
+}
+
+function calculateTreatments(vol, risk, dss, ph) {
+  const list = []
+  // Disinfection Logic: High risk or DSS recommendation
+  if (risk >= 60 || dss !== 'Normal Operation') {
+    const amount = (vol / 1000) * CHEMICALS.chlorine.rate
+    list.push({ ...CHEMICALS.chlorine, amount: Math.ceil(amount), reason: 'Biofilm risk / Preventive maintenance' })
+  }
+
+  // pH Logic
+  if (ph !== '--') {
+    const p = Number(ph)
+    if (p < 6.5) {
+      const amount = (vol / 1000) * CHEMICALS.phPlus.rate
+      list.push({ ...CHEMICALS.phPlus, amount: Math.ceil(amount), reason: 'Low pH (< 6.5)' })
+    } else if (p > 8.5) {
+      const amount = (vol / 1000) * CHEMICALS.phMinus.rate
+      list.push({ ...CHEMICALS.phMinus, amount: Math.ceil(amount), reason: 'High pH (> 8.5)' })
+    }
+  }
+  return list
+}
+
 export default function App() {
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light')
   const [systemStatus, setSystemStatus] = useState({ text: 'CHECKING…', className: 'system-status' })
@@ -115,6 +143,16 @@ export default function App() {
   const [contributingFactors, setContributingFactors] = useState([])
   const [trend, setTrend] = useState(null)
   const [feeds, setFeeds] = useState([])
+  const [waterVolume, setWaterVolume] = useState(() => Number(localStorage.getItem('waterVolume')) || 1000)
+
+  useEffect(() => {
+    localStorage.setItem('waterVolume', waterVolume)
+  }, [waterVolume])
+
+  const treatments = useMemo(() => {
+    const riskVal = riskPercent === '--%' ? 0 : parseFloat(riskPercent)
+    return calculateTreatments(waterVolume, riskVal, dssDecision, ph)
+  }, [waterVolume, riskPercent, dssDecision, ph])
 
   const lastValidData = useRef(null)
 
@@ -413,6 +451,55 @@ export default function App() {
         <div className="insight-card"><h4>Urgency</h4><p>{dssUrgency}</p></div>
         <div className="insight-card"><h4>Recommended Action</h4><p>{dssAction}</p></div>
         <div className="insight-card"><h4>Next Review</h4><p>{dssReview}</p></div>
+      </div>
+
+      <div className="card" style={{ marginTop: '25px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
+          <h3>Chemical Dosage Recommendations</h3>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+            System Volume (L):
+            <input
+              type="number"
+              value={waterVolume}
+              onChange={(e) => setWaterVolume(Math.max(0, Number(e.target.value)))}
+              style={{
+                padding: '8px 12px',
+                borderRadius: '8px',
+                border: '1px solid var(--border)',
+                width: '120px',
+                background: 'var(--bg-main)',
+                color: 'var(--text-main)',
+                fontWeight: 'bold'
+              }}
+            />
+          </label>
+        </div>
+
+        {treatments.length > 0 ? (
+          <div style={{ marginTop: '20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px' }}>
+            {treatments.map((t, i) => (
+              <div key={i} style={{ padding: '16px', background: 'rgba(0,119,182,0.04)', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                <div style={{ fontWeight: 'bold', color: 'var(--primary)', marginBottom: '8px' }}>{t.name}</div>
+                <div style={{ fontSize: '1.5rem', fontWeight: 'bold', display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                  {t.amount} <span style={{ fontSize: '0.9rem', fontWeight: 'normal', color: 'var(--text-muted)' }}>{t.unit}</span>
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '8px' }}>Reason: {t.reason}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{
+            marginTop: '20px',
+            padding: '20px',
+            textAlign: 'center',
+            background: 'rgba(46, 204, 113, 0.1)',
+            borderRadius: '10px',
+            color: 'var(--success)',
+            fontWeight: 'bold'
+          }}>
+            ✅ System Nominal. No chemical treatment required.
+          </div>
+        )}
       </div>
 
       <footer className="footer">{lastUpdated} · Refreshes every 5 s</footer>
