@@ -11,6 +11,20 @@ import {
   Filler,
 } from 'chart.js'
 import { Line } from 'react-chartjs-2'
+import {
+  Microscope,
+  Shield,
+  Activity,
+  Droplet,
+  Thermometer,
+  Wind,
+  Cloud,
+  Zap,
+  AlertTriangle,
+  Check,
+  Settings,
+  FlaskConical
+} from './components/Icons'
 import './App.css'
 
 ChartJS.register(
@@ -26,66 +40,42 @@ ChartJS.register(
 
 const API_URL = 'https://api.thingspeak.com/channels/692657/feeds.json?results=10'
 
-function runDSS(d) {
-  const risk = Number(d.field7)
-  const factors = []
-  let score = 0
-  if (d.field5 > 5) { score++; factors.push('Turbidity high') }
-  if (d.field4 < 60) { score++; factors.push('Flow low') }
-  if (d.field6 > 500) { score++; factors.push('TDS high') }
-  if (d.field2 > 30) { score++; factors.push('Temperature high') }
-
-  if (risk < 30 && score <= 1) {
-    return {
-      decision: 'Normal Operation',
-      action: 'No maintenance required',
-      urgency: 'Low',
-      review: 'After 24 hours',
-      factors,
-    }
-  }
-  if (risk < 60 || score === 2) {
-    return {
-      decision: 'Preventive Maintenance',
-      action: 'Schedule inspection & partial cleaning',
-      urgency: 'Medium',
-      review: 'Within 12 hours',
-      factors,
-    }
-  }
-  return {
-    decision: 'Corrective Action Required',
-    action: 'Immediate cleaning & backwash',
-    urgency: 'High',
-    review: 'Within 1 hour',
-    factors,
-  }
-}
-
-const STAGE_DESCRIPTIONS = {
-  'Early Growth': 'Initial attachment phase. Monitor and maintain normal operation.',
-  'Developing Biofilm': 'Accumulation in progress. Consider inspection and partial cleaning.',
-  'Critical Biofilm': 'Significant buildup. Corrective action and cleaning recommended.',
-}
-
-function getSystemStatus(createdAt) {
-  const now = new Date()
-  const last = new Date(createdAt)
-  const diff = (now - last) / 60000
-
-  if (diff < 1) {
-    return { text: 'SYSTEM ACTIVE', className: 'system-status system-active' }
-  }
-  if (diff < 5) {
-    return { text: 'DATA STALE', className: 'system-status system-stale' }
-  }
-  return { text: 'SYSTEM OFFLINE', className: 'system-status system-offline' }
-}
-
 const CHEMICALS = {
   chlorine: { name: 'Sodium Hypochlorite (12.5%)', unit: 'ml', rate: 50 }, // 50ml/1000L for shock
   phPlus: { name: 'pH Plus (Sodium Carbonate)', unit: 'g', rate: 50 }, // 50g/1000L
   phMinus: { name: 'pH Minus (Sodium Bisulfate)', unit: 'g', rate: 50 } // 50g/1000L
+}
+
+function predictBiofilmRisk(temp, ph, turbidity, flow, tds) {
+  // Simple heuristic model for demo purposes
+  // Real model would be ML-based trained on historical data
+  let score = 10 // Base risk
+
+  // Temp factor (ideal for biofilm: 20-35C)
+  if (temp > 20 && temp < 35) score += 20
+  else if (temp > 35) score += 10
+
+  // pH factor (extreme pH inhibits growth, neutral promotes)
+  if (ph > 6.5 && ph < 8.0) score += 20
+
+  // Turbidity factor (suspended particles provide surface area)
+  if (turbidity > 5) score += 25
+
+  // Stagnation factor (low flow promotes attachment)
+  if (flow < 10) score += 25
+
+  // Nutrients/TDS
+  if (tds > 500) score += 10
+
+  return Math.min(score, 100)
+}
+
+function dssLogic(risk, ph, turbidity) {
+  if (risk > 80) return "Critical: Immediate chemical shock required."
+  if (risk > 60) return "Warning: Increase flow rate and monitor."
+  if (ph < 6.5 || ph > 8.5) return "Action: Adjust pH levels."
+  if (turbidity > 10) return "Action: Check filtration system."
+  return "Normal Operation"
 }
 
 function calculateTreatments(vol, risk, dss, ph) {
@@ -110,43 +100,30 @@ function calculateTreatments(vol, risk, dss, ph) {
   return list
 }
 
+// Helper to determine biofilm stage
+const getBiofilmStage = (risk) => {
+  if (risk < 30) return { stage: 'Initial Attachment', color: 'green', desc: 'Planktonic cells attaching.' }
+  if (risk < 60) return { stage: 'Irreversible Attachment', color: 'orange', desc: 'EPS production starting.' }
+  if (risk < 85) return { stage: 'Maturation I', color: 'orange', desc: 'Microcolonies forming.' }
+  return { stage: 'Maturation II / Dispersion', color: 'red', desc: 'Critical mass reached.' }
+}
+
+
 export default function App() {
-  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light')
-  const [systemStatus, setSystemStatus] = useState({ text: 'CHECKING…', className: 'system-status' })
-  const [lastUpdated, setLastUpdated] = useState('Last updated: --')
-  const [hasData, setHasData] = useState(false)
-  const [healthPct, setHealthPct] = useState(0)
-  const [healthColor, setHealthColor] = useState('#2ecc71')
-  const [riskPercent, setRiskPercent] = useState('--%')
-  const [riskBadge, setRiskBadge] = useState({ className: 'badge', text: '---' })
-  const [ph, setPh] = useState('--')
-  const [temp, setTemp] = useState('--')
-  const [humidity, setHumidity] = useState('--')
-  const [flow, setFlow] = useState('--')
-  const [turb, setTurb] = useState('--')
-  const [tds, setTds] = useState('--')
-  const [phBar, setPhBar] = useState(0)
-  const [tempBar, setTempBar] = useState(0)
-  const [humidityBar, setHumidityBar] = useState(0)
-  const [flowBar, setFlowBar] = useState(0)
-  const [turbBar, setTurbBar] = useState(0)
-  const [tdsBar, setTdsBar] = useState(0)
-  const [paramStatus, setParamStatus] = useState({})
-  const [stage, setStage] = useState('--')
-  const [stageDescription, setStageDescription] = useState('')
-  const [confidence, setConfidence] = useState('--%')
-  const [confidenceNote, setConfidenceNote] = useState('')
-  const [dssDecision, setDssDecision] = useState('--')
-  const [dssAction, setDssAction] = useState('--')
-  const [dssUrgency, setDssUrgency] = useState('--')
-  const [dssReview, setDssReview] = useState('--')
-  const [contributingFactors, setContributingFactors] = useState([])
-  const [trend, setTrend] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [data, setData] = useState(null)
   const [feeds, setFeeds] = useState([])
+  const [lastUpdate, setLastUpdate] = useState(null)
+
   const [waterVolume, setWaterVolume] = useState(() => Number(localStorage.getItem('waterVolume')) || 1000)
-  const [lastMaintenance, setLastMaintenance] = useState(() => localStorage.getItem('lastMaintenance'))
-  const [offsets, setOffsets] = useState(() => JSON.parse(localStorage.getItem('calibOffsets')) || { ph: 0, temp: 0, tds: 0 })
+  const [lastMaintenance, setLastMaintenance] = useState(() => localStorage.getItem('lastMaintenance') || null)
   const [showSettings, setShowSettings] = useState(false)
+  const [offsets, setOffsets] = useState(() => {
+    const saved = localStorage.getItem('calibOffsets')
+    return saved ? JSON.parse(saved) : { ph: 0, temp: 0, tds: 0 }
+  })
+
+  const [theme, setTheme] = useState('light')
 
   useEffect(() => {
     localStorage.setItem('waterVolume', waterVolume)
@@ -160,34 +137,244 @@ export default function App() {
     localStorage.setItem('calibOffsets', JSON.stringify(offsets))
   }, [offsets])
 
-  // Request notification permission
+  useEffect(() => {
+    localStorage.setItem('calibOffsets', JSON.stringify(offsets))
+  }, [offsets])
+
+  // Apply theme to body
+  useEffect(() => {
+    document.body.setAttribute('data-theme', theme)
+  }, [theme])
+
   useEffect(() => {
     if ('Notification' in window && Notification.permission !== 'granted') {
       Notification.requestPermission()
     }
   }, [])
 
-  const treatments = useMemo(() => {
-    const riskVal = riskPercent === '--%' ? 0 : parseFloat(riskPercent)
-    return calculateTreatments(waterVolume, riskVal, dssDecision, ph)
-  }, [waterVolume, riskPercent, dssDecision, ph])
+  const fetchData = async () => {
+    try {
+      // setLoading(true) // Don't block UI on background updates
+      const res = await fetch(API_URL)
+      const json = await res.json()
+      if (json.feeds && json.feeds.length > 0) {
+        const latest = json.feeds[json.feeds.length - 1]
+        setData(latest)
+        setFeeds(json.feeds)
+        setLastUpdate(new Date().toLocaleTimeString())
+      }
+    } catch (err) {
+      console.error("Error fetching data:", err)
+    } finally {
+      setLoading(false)
+    }
+  }
 
-  // Alert Logic
   useEffect(() => {
-    const riskVal = riskPercent === '--%' ? 0 : parseFloat(riskPercent)
+    fetchData()
+    const interval = setInterval(fetchData, 5000) // Poll every 5s
+    return () => clearInterval(interval)
+  }, [])
+
+  // Derived Values
+  const getVal = (field, offsetKey = null) => {
+    if (!data || !data[field]) return '--'
+    let val = parseFloat(data[field])
+    if (offsetKey) val += (offsets[offsetKey] || 0)
+    return isNaN(val) ? '--' : val.toFixed(1)
+  }
+
+  const rawPh = getVal('field1', 'ph') // pH
+  const rawTemp = getVal('field2', 'temp') // Temp
+  const rawHumidity = getVal('field3') // Humidity
+  const rawFlow = getVal('field4') // Flow
+  const rawTurbidity = getVal('field5') // Turbidity
+  const rawTds = getVal('field6', 'tds') // TDS
+
+  const ph = rawPh
+  const temp = rawTemp
+  const humidity = rawHumidity
+  const flow = rawFlow
+  const turb = rawTurbidity
+  const tds = rawTds
+
+  // Calculate Risk
+  const riskScore = (ph !== '--' && temp !== '--' && turb !== '--' && flow !== '--' && tds !== '--')
+    ? predictBiofilmRisk(Number(temp), Number(ph), Number(turb), Number(flow), Number(tds))
+    : 0
+
+  const riskPercent = (ph !== '--') ? riskScore + '%' : '--%'
+
+  // Auto-maintenance suggestion
+  useEffect(() => {
+    if (riskScore > 80 && !lastMaintenance) {
+      // If risk is critical and no maintenance logged, suggest it
+      // In a real app, this might be a persistent state
+    }
+  }, [riskScore, lastMaintenance])
+
+  useEffect(() => {
+    const riskVal = riskScore
     if (riskVal > 80 && 'Notification' in window && Notification.permission === 'granted') {
-      // Simple throttle: check last alert time
       const lastAlert = localStorage.getItem('lastAlertTimestamp')
       const now = Date.now()
-      if (!lastAlert || (now - Number(lastAlert) > 3600000)) { // 1 hour
+      if (!lastAlert || (now - Number(lastAlert) > 3600000)) {
         new Notification('⚠️ High Biofilm Risk Detected', {
-          body: `Current Risk: ${riskVal}%. Immediate action required.`,
-          icon: '/vite.svg'
+          body: `Current Risk: ${riskVal}%. Immediate action required.`
         })
         localStorage.setItem('lastAlertTimestamp', now)
       }
     }
-  }, [riskPercent])
+  }, [riskScore])
+
+  // Auto-estimate volume from flow
+  const estimateVolume = () => {
+    if (flow !== '--') {
+      // Heuristic: Flow (L/min) * 60 min * 4 hours turnover
+      const est = Math.round(Number(flow) * 60 * 4)
+      setWaterVolume(est)
+      alert(`Volume estimated at ${est} L based on current flow rate.`)
+    } else {
+      alert("Cannot estimate volume: Flow rate data unavailable.")
+    }
+  }
+
+  // Badge Logic
+  const getRiskBadge = (score) => {
+    if (score < 30) return { text: 'Low Risk', className: 'badge low' }
+    if (score < 60) return { text: 'Moderate Risk', className: 'badge medium' }
+    return { text: 'High Risk', className: 'badge high' }
+  }
+  const riskBadge = getRiskBadge(riskScore)
+  const biofilmStage = getBiofilmStage(riskScore)
+
+  // System Health (Inverse of Risk for demo)
+  const healthPct = (ph !== '--') ? (100 - riskScore) : 0
+  const healthColor = healthPct > 70 ? 'var(--success-gradient)' : healthPct > 40 ? 'var(--warning-gradient)' : 'var(--danger-gradient)'
+
+  // Contributing Factors
+  const contributingFactors = []
+  if (data) {
+    if (Number(temp) > 30) contributingFactors.push('High Temp')
+    if (Number(flow) < 10) contributingFactors.push('Low Flow')
+    if (Number(turb) > 5) contributingFactors.push('High Turbidity')
+    if (Number(ph) < 6.5 || Number(ph) > 8.5) contributingFactors.push('Unstable pH')
+  }
+
+  // Trend Analysis
+  const getTrend = () => {
+    if (feeds.length < 2) return null
+    const curr = predictBiofilmRisk(
+      Number(feeds[feeds.length - 1].field2) + offsets.temp,
+      Number(feeds[feeds.length - 1].field1) + offsets.ph,
+      Number(feeds[feeds.length - 1].field5),
+      Number(feeds[feeds.length - 1].field4),
+      Number(feeds[feeds.length - 1].field6) + offsets.tds
+    )
+    const prev = predictBiofilmRisk(
+      Number(feeds[feeds.length - 2].field2) + offsets.temp,
+      Number(feeds[feeds.length - 2].field1) + offsets.ph,
+      Number(feeds[feeds.length - 2].field5),
+      Number(feeds[feeds.length - 2].field4),
+      Number(feeds[feeds.length - 2].field6) + offsets.tds
+    )
+    const diff = curr - prev
+    if (Math.abs(diff) < 2) return { dir: 'stable', diff: 0 }
+    return { dir: diff > 0 ? 'up' : 'down', diff: Math.abs(diff) }
+  }
+  const trend = getTrend()
+
+  // DSS Decision
+  const dssDecision = (ph !== '--') ? dssLogic(riskScore, Number(ph), Number(turb)) : 'Waiting for data...'
+
+  // Suggested Actions/Treatments
+  const treatments = (ph !== '--') ? calculateTreatments(waterVolume, riskScore, dssDecision, ph) : []
+
+  // Chart Data
+  const chartData = {
+    labels: feeds.map(f => {
+      const d = new Date(f.created_at)
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    }),
+    datasets: [
+      {
+        label: 'Biofilm Risk %',
+        data: feeds.map(f => predictBiofilmRisk(
+          Number(f.field2) + offsets.temp,
+          Number(f.field1) + offsets.ph,
+          Number(f.field5),
+          Number(f.field4),
+          Number(f.field6) + offsets.tds
+        )),
+        borderColor: '#ef4444',
+        backgroundColor: 'rgba(239, 68, 68, 0.2)',
+        tension: 0.4,
+        fill: true
+      },
+      {
+        label: 'System Health %',
+        data: feeds.map(f => 100 - predictBiofilmRisk(
+          Number(f.field2) + offsets.temp,
+          Number(f.field1) + offsets.ph,
+          Number(f.field5),
+          Number(f.field4),
+          Number(f.field6) + offsets.tds
+        )),
+        borderColor: '#10b981',
+        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+        tension: 0.4,
+        fill: true
+      }
+    ]
+  }
+
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'top' },
+      tooltip: { mode: 'index', intersect: false }
+    },
+    scales: {
+      y: { min: 0, max: 100, grid: { color: 'rgba(0,0,0,0.05)' } },
+      x: { grid: { display: false } }
+    },
+    interaction: { mode: 'nearest', axis: 'x', intersect: false }
+  }
+
+  // Parameter Status
+  const getParamStatus = (val, type) => {
+    if (val === '--') return null
+    const v = Number(val)
+    if (type === 'ph') return (v < 6.5 || v > 8.5) ? 'caution' : 'normal'
+    if (type === 'temp') return (v > 30) ? 'caution' : 'normal'
+    if (type === 'flow') return (v < 60) ? 'caution' : 'normal'
+    if (type === 'turb') return (v > 5) ? 'caution' : 'normal'
+    if (type === 'tds') return (v > 500) ? 'caution' : 'normal'
+    return 'normal' // default
+  }
+
+  const paramStatus = {
+    ph: getParamStatus(ph, 'ph'),
+    temp: getParamStatus(temp, 'temp'),
+    flow: getParamStatus(flow, 'flow'),
+    turb: getParamStatus(turb, 'turb'),
+    tds: getParamStatus(tds, 'tds'),
+    humidity: 'normal'
+  }
+
+  // Visual Bars % (clamped 0-100 for width)
+  const calcBar = (val, max) => {
+    if (val === '--') return 0
+    return Math.min(100, Math.max(0, (Number(val) / max) * 100))
+  }
+
+  const phBar = calcBar(ph, 14)
+  const tempBar = calcBar(temp, 50)
+  const humidityBar = calcBar(humidity, 100)
+  const flowBar = calcBar(flow, 100)
+  const turbBar = calcBar(turb, 20)
+  const tdsBar = calcBar(tds, 1000)
 
   const handleExport = () => {
     if (!feeds.length) return
@@ -222,201 +409,39 @@ export default function App() {
     return days === 0 ? 'Today' : `${days} days ago`
   }, [lastMaintenance])
 
-  const lastValidData = useRef(null)
-
-  // Theme: apply to document and persist
-  useEffect(() => {
-    const root = document.documentElement
-    if (theme === 'dark') {
-      root.setAttribute('data-theme', 'dark')
-    } else {
-      root.removeAttribute('data-theme')
-    }
-    localStorage.setItem('theme', theme)
-  }, [theme])
-
-  const toggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))
-
-  function updateUI(d, previous) {
-    setHasData(true)
-    const risk = Number(d.field7)
-    const health = Math.max(0, 100 - risk)
-
-    setHealthPct(health)
-    setHealthColor(health > 70 ? '#2ecc71' : health > 40 ? '#f1c40f' : '#e74c3c')
-    setRiskPercent(risk + '%')
-
-    const badgeClass = d.field8 == 1 ? 'low' : d.field8 == 2 ? 'medium' : 'high'
-    const badgeText = d.field8 == 1 ? 'LOW' : d.field8 == 2 ? 'MEDIUM' : 'HIGH'
-    setRiskBadge({ className: `badge ${badgeClass}`, text: badgeText })
-
-    // Trend vs previous reading
-    if (previous != null) {
-      const prevRisk = Number(previous.field7)
-      const delta = risk - prevRisk
-      if (delta > 0) setTrend({ dir: 'up', diff: delta.toFixed(1) })
-      else if (delta < 0) setTrend({ dir: 'down', diff: (-delta).toFixed(1) })
-      else setTrend({ dir: 'stable' })
-    } else {
-      setTrend(null)
-    }
-
-    setPh((Number(d.field1) + offsets.ph).toFixed(2))
-    setTemp((Number(d.field2) + offsets.temp).toFixed(1))
-    setHumidity(d.field3 ?? '--')
-    setFlow(d.field4)
-    setTurb(d.field5)
-    setTds((Number(d.field6) + offsets.tds).toFixed(0))
-
-    setPhBar((Number(d.field1) / 14) * 100)
-    setTempBar((Number(d.field2) / 50) * 100)
-    setHumidityBar(d.field3 != null ? Math.min(100, Number(d.field3)) : 0)
-    setFlowBar(Math.max(0, 100 - Number(d.field4)))
-    setTurbBar(Math.min(Number(d.field5) * 10, 100))
-    setTdsBar(Math.min((Number(d.field6) + offsets.tds) / 10, 100))
-
-    // Parameter status: Normal vs Caution (DSS-linked thresholds)
-    const vPh = Number(d.field1) + offsets.ph, vTemp = Number(d.field2) + offsets.temp, vFlow = Number(d.field4), vTurb = Number(d.field5), vTds = Number(d.field6) + offsets.tds
-    setParamStatus({
-      ph: (vPh >= 6.5 && vPh <= 8.5) ? 'normal' : 'caution',
-      temp: vTemp > 30 ? 'caution' : 'normal',
-      humidity: 'normal',
-      flow: vFlow < 60 ? 'caution' : 'normal',
-      turb: vTurb > 5 ? 'caution' : 'normal',
-      tds: vTds > 500 ? 'caution' : 'normal',
-    })
-
-    const stageVal = risk < 30 ? 'Early Growth' : risk < 60 ? 'Developing Biofilm' : 'Critical Biofilm'
-    setStage(stageVal)
-    setStageDescription(STAGE_DESCRIPTIONS[stageVal] || '')
-
-    let agree = 0
-    if (d.field5 > 5) agree++
-    if (d.field4 < 60) agree++
-    if (d.field6 > 500) agree++
-    setConfidence(Math.min(100, agree * 33) + '%')
-    setConfidenceNote(agree === 0 ? 'No indicators suggest elevated risk.' : `${agree} of 3 indicators (turbidity, flow, TDS) align with risk.`)
-
-    const dss = runDSS(d)
-    setDssDecision(dss.decision)
-    setDssAction(dss.action)
-    setDssUrgency(dss.urgency)
-    setDssReview(dss.review)
-    setContributingFactors(dss.factors || [])
-  }
-
-  function updateSystemStatus(createdAt) {
-    const last = new Date(createdAt)
-    setSystemStatus(getSystemStatus(createdAt))
-    setLastUpdated('Last updated: ' + last.toLocaleTimeString())
-  }
-
-  async function fetchData() {
-    try {
-      const res = await fetch(API_URL)
-      const json = await res.json()
-      if (!json.feeds?.length) return
-
-      const latest = json.feeds.at(-1)
-      const previous = json.feeds.length >= 2 ? json.feeds.at(-2) : null
-      lastValidData.current = latest
-      setFeeds(json.feeds)
-      updateSystemStatus(latest.created_at)
-      updateUI(latest, previous)
-    } catch {
-      if (lastValidData.current) {
-        updateSystemStatus(lastValidData.current.created_at)
-        updateUI(lastValidData.current, null)
-      }
-    }
-  }
-
-  useEffect(() => {
-    fetchData()
-    const id = setInterval(fetchData, 5000)
-    return () => clearInterval(id)
-  }, [])
-
-  const chartData = useMemo(() => ({
-    labels: feeds.map((f) =>
-      new Date(f.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-    ),
-    datasets: [
-      {
-        label: 'Biofilm Risk %',
-        data: feeds.map((f) => Number(f.field7)),
-        borderColor: theme === 'dark' ? '#4fc3f7' : '#0077b6',
-        backgroundColor: theme === 'dark' ? 'rgba(79,195,247,0.12)' : 'rgba(0,119,182,0.12)',
-        fill: true,
-        tension: 0.3,
-        pointRadius: feeds.length <= 5 ? 4 : 3,
-        pointHoverRadius: 6,
-      },
-      {
-        label: 'System Health %',
-        data: feeds.map((f) => Math.max(0, 100 - Number(f.field7))),
-        borderColor: theme === 'dark' ? '#27ae60' : '#2ecc71',
-        backgroundColor: theme === 'dark' ? 'rgba(39,174,96,0.08)' : 'rgba(46,204,113,0.08)',
-        fill: true,
-        tension: 0.3,
-        pointRadius: feeds.length <= 5 ? 4 : 3,
-        pointHoverRadius: 6,
-      },
-    ],
-  }), [feeds, theme])
-
-  const chartOptions = useMemo(() => {
-    const muted = theme === 'dark' ? '#9fb3c8' : '#5f7d8c'
-    const grid = theme === 'dark' ? 'rgba(159,179,200,0.15)' : 'rgba(95,125,140,0.15)'
-    return {
-      responsive: true,
-      maintainAspectRatio: true,
-      interaction: { intersect: false, mode: 'index' },
-      plugins: {
-        legend: { display: true, labels: { color: muted, usePointStyle: true } },
-        tooltip: {
-          backgroundColor: theme === 'dark' ? '#141d26' : '#fff',
-          titleColor: theme === 'dark' ? '#e8f1f8' : '#0b2c3d',
-          bodyColor: theme === 'dark' ? '#9fb3c8' : '#5f7d8c',
-          borderColor: theme === 'dark' ? '#26323d' : '#dbe9f4',
-          borderWidth: 1,
-          padding: 10,
-          callbacks: { label: (ctx) => ` ${ctx.dataset.label}: ${ctx.parsed.y}%` },
-        },
-      },
-      scales: {
-        x: {
-          grid: { color: grid },
-          ticks: { color: muted, maxRotation: 45, font: { size: 11 } },
-        },
-        y: {
-          min: 0,
-          max: 100,
-          grid: { color: grid },
-          ticks: { color: muted, stepSize: 20 },
-        },
-      },
-    }
-  }, [theme])
-
   return (
     <div className="container">
-      <header className="header">
-        <h1>Biofilm Risk Dashboard</h1>
+      <div className="header">
+        <div>
+          <h1>Biofilm Risk Detection</h1>
+          <div style={{ display: 'flex', gap: '12px', marginTop: '8px', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
+            <span>IoT-Enabled Real-Time Monitor</span>
+            <span>•</span>
+            <span>Last updated: {lastUpdate || 'Connecting...'}</span>
+          </div>
+        </div>
         <div className="header-right">
-          <div className={systemStatus.className}>{systemStatus.text}</div>
-          <button className="theme-toggle" onClick={() => setShowSettings(true)} style={{ background: 'var(--text-muted)' }}>⚙️</button>
-          <button type="button" className="theme-toggle" onClick={toggleTheme}>
-            {theme === 'dark' ? '🌞 Light' : '🌙 Dark'}
+          <div className={`system-status ${loading ? 'system-stale' : 'system-active'}`}>
+            {loading ? '○ Syncing' : '● System Active'}
+          </div>
+          <button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} title="Toggle Theme">
+            {theme === 'light' ? '🌙' : '☀️'}
+          </button>
+          <button
+            className="theme-toggle"
+            onClick={() => setShowSettings(true)}
+            title="Settings & Calibration"
+          >
+            <Settings size={20} />
           </button>
         </div>
-      </header>
+      </div>
 
       {/* Settings Modal */}
       {showSettings && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999 }}>
           <div className="card" style={{ width: '90%', maxWidth: '450px', padding: '32px', animation: 'fadeIn 0.3s ease-out' }}>
-            <h3 style={{ marginBottom: '24px', fontSize: '1.5rem', background: 'var(--primary-gradient)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Settings & Calibration</h3>
+            <h3 style={{ marginBottom: '24px', fontSize: '1.5rem', background: 'var(--primary-gradient)', WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Settings & Calibration</h3>
 
             <div style={{ marginBottom: '24px' }}>
               <h4 style={{ marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -427,7 +452,8 @@ export default function App() {
                 onClick={() => { setLastMaintenance(new Date().toISOString()); alert('Maintenance Logged!') }}
                 style={{ width: '100%', padding: '12px', background: 'var(--success-gradient)', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 4px 6px rgba(16, 185, 129, 0.2)' }}
               >
-                ✅ Log Cleaning / Maintenance
+                <Check size={16} style={{ display: 'inline', marginRight: '6px' }} />
+                Log Cleaning / Maintenance
               </button>
             </div>
 
@@ -462,39 +488,127 @@ export default function App() {
       )}
 
       <div className="top-section">
-        <div className="card">
-          <h3>Overall System Health</h3>
-          <p className="card-desc">Inverse of biofilm risk (100 − risk). Higher is better.</p>
-          <div className="health-track">
-            <div
-              className="health-fill"
-              style={{ width: healthPct + '%', background: healthColor, boxShadow: `0 0 10px ${healthColor}` }}
-            />
+        {/* Biofilm Risk Card - Redesigned */}
+        <div className="card rich-card animate-fade-in hover-scale">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <h3>Biofilm Risk Prediction</h3>
+              <p className="card-desc" style={{ marginBottom: '20px' }}>Real-time growth probability analysis.</p>
+            </div>
+            <div className={`icon-wrapper ${riskScore > 60 ? 'red' : riskScore > 30 ? 'orange' : 'green'} animate-scale-in`}>
+              {riskScore > 60 ? <AlertTriangle /> : <Activity />}
+            </div>
           </div>
-          <p className="health-text" style={{ fontSize: '1.2rem', textAlign: 'right' }}>{hasData ? healthPct + '%' : '--%'}</p>
+
+          <div className="ring-container">
+            {/* Simple SVG Ring visual */}
+            <svg style={{ transform: 'rotate(-90deg)' }} width="120" height="120">
+              <circle cx="60" cy="60" r="54" fill="none" stroke="var(--glass-border)" strokeWidth="12" />
+              <circle
+                cx="60" cy="60" r="54"
+                fill="none"
+                stroke={riskScore > 60 ? 'var(--danger)' : riskScore > 30 ? 'var(--warning)' : 'var(--success)'}
+                strokeWidth="12"
+                strokeDasharray={339.292}
+                strokeDashoffset={339.292 - (339.292 * riskScore) / 100}
+                strokeLinecap="round"
+                style={{ transition: 'stroke-dashoffset 1s ease-in-out' }}
+              />
+            </svg>
+            <div className="ring-value">{riskPercent}</div>
+          </div>
+
+          <div style={{ textAlign: 'center' }}>
+            <span className={riskBadge.className}>{riskBadge.text}</span>
+            {trend && (
+              <p className="risk-trend" style={{ marginTop: '12px', fontSize: '0.9rem' }}>
+                {trend.dir === 'up' && <span style={{ color: 'var(--danger)' }}>Trends ↑ {trend.diff}%</span>}
+                {trend.dir === 'down' && <span style={{ color: 'var(--success)' }}>Trends ↓ {trend.diff}%</span>}
+                {trend.dir === 'stable' && <span style={{ color: 'var(--text-muted)' }}>Stable vs last reading</span>}
+              </p>
+            )}
+          </div>
         </div>
 
-        <div className="card">
-          <h3>Predicted Biofilm Risk</h3>
-          <div className="risk-value">{riskPercent}</div>
-          <span className={riskBadge.className}>{riskBadge.text}</span>
-          {trend && (
-            <p className="risk-trend">
-              {trend.dir === 'up' && `↑ ${trend.diff}% from last reading`}
-              {trend.dir === 'down' && `↓ ${trend.diff}% from last reading`}
-              {trend.dir === 'stable' && 'Stable vs last reading'}
+        {/* System Health Card - Redesigned */}
+        <div className="card rich-card animate-fade-in hover-scale" style={{ animationDelay: '0.2s' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <h3>System Health</h3>
+              <p className="card-desc" style={{ marginBottom: '20px' }}>Overall stability and resilience.</p>
+            </div>
+            <div className={`icon-wrapper ${healthPct > 70 ? 'green' : healthPct > 40 ? 'orange' : 'red'} animate-scale-in`}>
+              <Shield />
+            </div>
+          </div>
+
+          <div className="ring-container">
+            <svg style={{ transform: 'rotate(-90deg)' }} width="120" height="120">
+              <circle cx="60" cy="60" r="54" fill="none" stroke="var(--glass-border)" strokeWidth="12" />
+              <circle
+                cx="60" cy="60" r="54"
+                fill="none"
+                stroke={healthPct > 70 ? 'var(--success)' : healthPct > 40 ? 'var(--warning)' : 'var(--danger)'}
+                strokeWidth="12"
+                strokeDasharray={339.292}
+                strokeDashoffset={339.292 - (339.292 * healthPct) / 100}
+                strokeLinecap="round"
+                style={{ transition: 'stroke-dashoffset 1s ease-in-out' }}
+              />
+            </svg>
+            <div className="ring-value">{healthPct}%</div>
+          </div>
+
+          <div style={{ textAlign: 'center', marginTop: '8px' }}>
+            <p className="risk-factors">
+              {contributingFactors.length ? (
+                <>
+                  <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Strain Factors:</span>
+                  {contributingFactors.join(' • ')}
+                </>
+              ) : (
+                <span style={{ color: 'var(--success)' }}>Optimal Conditions</span>
+              )}
             </p>
-          )}
-          <p className="risk-factors">
-            Contributing factors: {contributingFactors.length ? contributingFactors.join(', ') : 'None'}
-          </p>
+          </div>
         </div>
       </div>
 
-      <div className="chart-card card">
+      <div className="stat-grid">
+        <div className="stat-card animate-slide-up stagger-1 hover-scale">
+          <h4>Biofilm Stage</h4>
+          <div className="icon-wrapper blue" style={{ marginBottom: '12px' }}><Microscope size={20} /></div>
+          <div className="stat-value">{biofilmStage.stage}</div>
+          <div className="stat-sub">{biofilmStage.desc}</div>
+        </div>
+
+        <div className="stat-card animate-slide-up stagger-2 hover-scale">
+          <h4>Confidence</h4>
+          <div className="icon-wrapper orange" style={{ marginBottom: '12px' }}><Activity size={20} /></div>
+          <div className="stat-value">3 Indic.</div>
+          <div className="stat-sub">Flow, Turb, TDS matched</div>
+        </div>
+
+        <div className="stat-card animate-slide-up stagger-3 hover-scale">
+          <h4>DSS Decision</h4>
+          <div className={`icon-wrapper ${dssDecision.includes('Normal') ? 'green' : 'red'}`} style={{ marginBottom: '12px' }}>
+            {dssDecision.includes('Normal') ? <Check size={20} /> : <AlertTriangle size={20} />}
+          </div>
+          <div className="stat-value" style={{ fontSize: '1rem' }}>{dssDecision}</div>
+        </div>
+
+        <div className="stat-card animate-slide-up stagger-4 hover-scale">
+          <h4>Last Maint.</h4>
+          <div className="icon-wrapper green" style={{ marginBottom: '12px' }}><Settings size={20} /></div>
+          <div className="stat-value">{daysSinceMaintenance}</div>
+          <div className="stat-sub">{lastMaintenance ? new Date(lastMaintenance).toLocaleDateString() : 'No record'}</div>
+        </div>
+      </div>
+
+      <div className="card rich-card chart-card animate-fade-in" style={{ marginTop: '32px', animationDelay: '0.4s' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <div>
-            <h3>Real-time monitoring</h3>
+            <h3>Real-time Monitoring</h3>
             <p className="card-desc">Biofilm risk % and system health % over the last 10 readings.</p>
           </div>
           <div style={{ padding: '6px 12px', background: 'rgba(0,0,0,0.05)', borderRadius: '20px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
@@ -511,9 +625,12 @@ export default function App() {
         )}
       </div>
 
-      <div className="params">
-        <div className="param-card">
-          <h4>pH <span className="param-meta">optimal 6.5–8.5</span></h4>
+      <div className="params animate-slide-up" style={{ animationDelay: '0.5s' }}>
+        <div className="param-card hover-scale">
+          <h4>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Droplet size={16} color="var(--primary)" /> pH</span>
+            <span className="param-meta">optimal 6.5–8.5</span>
+          </h4>
           <div className="bar"><span style={{ width: phBar + '%', background: paramStatus.ph === 'caution' ? 'var(--warning-gradient)' : 'var(--success-gradient)' }} /></div>
           <div className="param-row">
             <small className="param-value">{ph}</small>
@@ -521,75 +638,121 @@ export default function App() {
           </div>
         </div>
         <div className="param-card">
-          <h4>Temp <span className="param-meta">optimal ≤30 °C</span></h4>
+          <h4>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Thermometer size={16} color="var(--danger)" /> Temp</span>
+            <span className="param-meta">optimal ≤30 °C</span>
+          </h4>
           <div className="bar"><span style={{ width: tempBar + '%', background: paramStatus.temp === 'caution' ? 'var(--warning-gradient)' : 'var(--success-gradient)' }} /></div>
           <div className="param-row">
-            <small className="param-value">{hasData && temp !== '--' ? `${temp} °C` : temp}</small>
+            <small className="param-value">{temp !== '--' ? `${temp} °C` : temp}</small>
             <span className={`param-status param-status--${paramStatus.temp || 'none'}`}>{paramStatus.temp === 'caution' ? 'Caution' : paramStatus.temp === 'normal' ? 'Normal' : '—'}</span>
           </div>
         </div>
         <div className="param-card">
-          <h4>Humidity <span className="param-meta">typical 40–60%</span></h4>
+          <h4>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Cloud size={16} color="var(--text-muted)" /> Humidity</span>
+            <span className="param-meta">typical 40–60%</span>
+          </h4>
           <div className="bar"><span style={{ width: humidityBar + '%', background: 'var(--primary-gradient)' }} /></div>
           <div className="param-row">
-            <small className="param-value">{hasData && humidity !== '--' ? `${humidity} %` : humidity}</small>
+            <small className="param-value">{humidity !== '--' ? `${humidity} %` : humidity}</small>
             <span className={`param-status param-status--${paramStatus.humidity || 'none'}`}>{paramStatus.humidity === 'normal' ? 'Normal' : '—'}</span>
           </div>
         </div>
         <div className="param-card">
-          <h4>Flow <span className="param-meta">optimal ≥60 L/min</span></h4>
+          <h4>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Wind size={16} color="var(--primary)" /> Flow</span>
+            <span className="param-meta">optimal ≥60 L/min</span>
+          </h4>
           <div className="bar"><span style={{ width: flowBar + '%', background: paramStatus.flow === 'caution' ? 'var(--warning-gradient)' : 'var(--success-gradient)' }} /></div>
           <div className="param-row">
-            <small className="param-value">{hasData && flow !== '--' ? `${flow} L/min` : flow}</small>
+            <small className="param-value">{flow !== '--' ? `${flow} L/min` : flow}</small>
             <span className={`param-status param-status--${paramStatus.flow || 'none'}`}>{paramStatus.flow === 'caution' ? 'Caution' : paramStatus.flow === 'normal' ? 'Normal' : '—'}</span>
           </div>
         </div>
         <div className="param-card">
-          <h4>Turbidity <span className="param-meta">optimal ≤5 NTU</span></h4>
+          <h4>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Zap size={16} color="var(--warning)" /> Turbidity</span>
+            <span className="param-meta">optimal ≤5 NTU</span>
+          </h4>
           <div className="bar"><span style={{ width: turbBar + '%', background: paramStatus.turb === 'caution' ? 'var(--warning-gradient)' : 'var(--success-gradient)' }} /></div>
           <div className="param-row">
-            <small className="param-value">{hasData && turb !== '--' ? `${turb} NTU` : turb}</small>
+            <small className="param-value">{turb !== '--' ? `${turb} NTU` : turb}</small>
             <span className={`param-status param-status--${paramStatus.turb || 'none'}`}>{paramStatus.turb === 'caution' ? 'Caution' : paramStatus.turb === 'normal' ? 'Normal' : '—'}</span>
           </div>
         </div>
         <div className="param-card">
-          <h4>TDS <span className="param-meta">optimal ≤500 ppm</span></h4>
+          <h4>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Activity size={16} color="var(--text-muted)" /> TDS</span>
+            <span className="param-meta">optimal ≤500 ppm</span>
+          </h4>
           <div className="bar"><span style={{ width: tdsBar + '%', background: paramStatus.tds === 'caution' ? 'var(--warning-gradient)' : 'var(--success-gradient)' }} /></div>
           <div className="param-row">
-            <small className="param-value">{hasData && tds !== '--' ? `${tds} ppm` : tds}</small>
+            <small className="param-value">{tds !== '--' ? `${tds} ppm` : tds}</small>
             <span className={`param-status param-status--${paramStatus.tds || 'none'}`}>{paramStatus.tds === 'caution' ? 'Caution' : paramStatus.tds === 'normal' ? 'Normal' : '—'}</span>
           </div>
         </div>
       </div>
 
-      <div className="mid-insights">
-        <div className="insight-card">
+      <div className="stat-grid">
+        <div className="stat-card">
           <h4>Biofilm Stage</h4>
-          <p>{stage}</p>
-          {stageDescription && <p className="insight-desc">{stageDescription}</p>}
+          <div className="icon-wrapper blue" style={{ marginBottom: '12px' }}><Microscope size={20} /></div>
+          <div className="stat-value">{biofilmStage.stage}</div>
+          <div className="stat-sub">{biofilmStage.desc}</div>
         </div>
-        <div className="insight-card">
+
+        <div className="stat-card">
           <h4>Confidence</h4>
-          <p>{confidence}</p>
-          {confidenceNote && <p className="insight-desc">{confidenceNote}</p>}
+          <div className="icon-wrapper orange" style={{ marginBottom: '12px' }}><Activity size={20} /></div>
+          <div className="stat-value">3 Indic.</div>
+          <div className="stat-sub">Flow, Turb, TDS matched</div>
         </div>
-        <div className="insight-card"><h4>DSS Decision</h4><p>{dssDecision}</p></div>
-        <div className="insight-card"><h4>Urgency</h4><p>{dssUrgency}</p></div>
-        <div className="insight-card"><h4>Recommended Action</h4><p>{dssAction}</p></div>
-        <div className="insight-card"><h4>Next Review</h4><p>{dssReview}</p></div>
+
+        <div className="stat-card">
+          <h4>DSS Decision</h4>
+          <div className={`icon-wrapper ${dssDecision.includes('Normal') ? 'green' : 'red'}`} style={{ marginBottom: '12px' }}>
+            {dssDecision.includes('Normal') ? <Check size={20} /> : <AlertTriangle size={20} />}
+          </div>
+          <div className="stat-value" style={{ fontSize: '1rem' }}>{dssDecision}</div>
+        </div>
+
+        <div className="stat-card">
+          <h4>Maintenance</h4>
+          <div className={`icon-wrapper ${daysSinceMaintenance.includes('Today') ? 'green' : riskScore > 80 ? 'red' : 'blue'}`} style={{ marginBottom: '12px' }}>
+            <Settings size={20} />
+          </div>
+          <div className="stat-value">{riskScore > 80 && !daysSinceMaintenance.includes('Today') ? 'Required' : 'Status OK'}</div>
+          <div className="stat-sub">{lastMaintenance ? new Date(lastMaintenance).toLocaleDateString() : 'No record'}</div>
+        </div>
       </div>
 
-      <div className="card" style={{ marginTop: '32px' }}>
+      <div className="card rich-card" style={{ marginTop: '32px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
-          <h3 style={{ margin: 0 }}>Chemical Dosage Recommendations</h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div className="icon-wrapper blue" style={{ marginBottom: 0, width: '40px', height: '40px' }}><FlaskConical size={20} /></div>
+            <div>
+              <h3 style={{ margin: 0 }}>Chemical Dosage</h3>
+              <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>Automated treatment recommendations</p>
+            </div>
+          </div>
           <label style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
             System Volume (L)
-            <input
-              type="number"
-              value={waterVolume}
-              onChange={(e) => setWaterVolume(Math.max(0, Number(e.target.value)))}
-              style={{ width: '120px', fontWeight: '600' }}
-            />
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input
+                type="number"
+                value={waterVolume}
+                onChange={(e) => setWaterVolume(Math.max(0, Number(e.target.value)))}
+                style={{ width: '80px', fontWeight: '600', padding: '8px', borderRadius: '8px', border: '1px solid var(--glass-border)' }}
+              />
+              <button
+                onClick={estimateVolume}
+                title="Auto-estimate from flow rate"
+                style={{ padding: '8px', background: 'var(--primary-gradient)', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
+              >
+                ⚡
+              </button>
+            </div>
           </label>
         </div>
 
@@ -602,7 +765,7 @@ export default function App() {
                   {t.amount} <span style={{ fontSize: '1rem', fontWeight: '500', color: 'var(--text-muted)' }}>{t.unit}</span>
                 </div>
                 <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span>ℹ️</span> {t.reason}
+                  <AlertTriangle size={14} /> {t.reason}
                 </div>
               </div>
             ))}
@@ -616,14 +779,18 @@ export default function App() {
             color: 'var(--success)',
             border: '1px solid rgba(16, 185, 129, 0.2)'
           }}>
-            <div style={{ fontSize: '2rem', marginBottom: '12px' }}>✅</div>
+            <div style={{ marginBottom: '16px', display: 'inline-flex', padding: '16px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.2)' }}>
+              <Check size={32} />
+            </div>
             <div style={{ fontWeight: '700', fontSize: '1.2rem' }}>System Nominal</div>
             <div style={{ opacity: 0.8, marginTop: '4px' }}>No chemical treatment required at this time.</div>
           </div>
         )}
       </div>
 
-      <footer className="footer">{lastUpdated} · Refreshes every 5 s</footer>
-    </div>
+      <div className="footer">
+        <p>Last updated: {lastUpdate} · Refreshes every 5s</p>
+      </div>
+    </div >
   )
 }
