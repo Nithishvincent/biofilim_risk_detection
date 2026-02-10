@@ -1,10 +1,12 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <DHT.h>
-#include "secrets.h"
+#include <ThingSpeak.h> // Install ThingSpeak Library by MathWorks
+#include "biofilim_jit_2026/secrets.h" // Adjusted path based on file location
 
 /* ================= WIFI ================= */
 // Credentials moved to secrets.h
+WiFiClient client;
 
 /* ================= WEB ================= */
 WebServer server(80);
@@ -67,6 +69,8 @@ void setup() {
   Serial.println("\nWiFi Connected");
   Serial.println(WiFi.localIP());
 
+  ThingSpeak.begin(client);
+
   /* DHT */
   dht.begin();
 
@@ -126,6 +130,41 @@ void loop() {
   Serial.print(" | Flow: "); Serial.print(flowRate);
   Serial.print(" | Turb: "); Serial.print(turbidityValue);
   Serial.print(" | TDS: "); Serial.println(tdsValue);
+
+  /* ===== ThingSpeak Push (Every 20s) ===== */
+  if (millis() % 20000 < 1000) { // Simple non-blocking timer
+    ThingSpeak.setField(1, phValue);
+    ThingSpeak.setField(2, temperature);
+    ThingSpeak.setField(3, humidity);
+    ThingSpeak.setField(4, flowRate);
+    ThingSpeak.setField(5, turbidityValue);
+    ThingSpeak.setField(6, tdsValue);
+    
+    // Risk score calculation on device (optional, or just send raw)
+    // Field 7: Risk Score? Let's verify what the dashboard expects.
+    // Dashboard expects risk_score on field 7, status on field 8?
+    // Let's check App.jsx again.
+    // field1: pH, field2: Temp, field3: Humidity, field4: Flow, field5: Turbidity, field6: TDS, field7: Risk, field8: Status
+    
+    // Calculate simple risk for display
+    float risk = 0;
+    if (phValue < 6.5 || phValue > 8.5) risk += 20;
+    if (temperature > 30) risk += 20;
+    if (turbidityValue > 5) risk += 20;
+    if (flowRate < 10) risk += 20;
+    if (tdsValue > 1000) risk += 20;
+    
+    ThingSpeak.setField(7, risk);
+    ThingSpeak.setField(8, "Active");
+
+    int x = ThingSpeak.writeFields(channelID, writeAPIKey);
+    if(x == 200){
+      Serial.println("Channel update successful.");
+    }
+    else{
+      Serial.println("Problem updating channel. HTTP error code " + String(x));
+    }
+  }
 
   delay(1000);
 }

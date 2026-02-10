@@ -604,9 +604,9 @@ button:active {
 [data-theme="dark"] .rich-card,
 [data-theme="dark"] .stat-card,
 [data-theme="dark"] .param-card {
-  background: rgba(30, 41, 59, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.4);
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
 }
 
 [data-theme="dark"] .icon-wrapper {
@@ -667,4 +667,43 @@ button:active {
 [data-theme="dark"] .system-status {
   background: rgba(15, 23, 42, 0.6);
   border-color: rgba(255, 255, 255, 0.05);
+}
+
+/* ========== UTILITIES & ANIMATION OVERRIDES ========== */
+/* Moving these to bottom to ensure they override theme specificities */
+.hover-scale {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.hover-scale:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.6s ease-out forwards;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.6s ease-out forwards;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.4s ease-out forwards;
+}
+
+.stagger-1 {
+  animation-delay: 0.1s;
+}
+
+.stagger-2 {
+  animation-delay: 0.2s;
+}
+
+.stagger-3 {
+  animation-delay: 0.3s;
+}
+
+.stagger-4 {
+  animation-delay: 0.4s;
 }

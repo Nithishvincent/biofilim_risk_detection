@@ -5,12 +5,16 @@ import {
   LinearScale,
   PointElement,
   LineElement,
+  RadialLinearScale,
+  BarElement,
+  ArcElement,
   Title,
   Tooltip,
   Legend,
   Filler,
 } from 'chart.js'
-import { Line } from 'react-chartjs-2'
+import { Line, Radar, Bar } from 'react-chartjs-2'
+
 import {
   Microscope,
   Shield,
@@ -23,7 +27,9 @@ import {
   AlertTriangle,
   Check,
   Settings,
-  FlaskConical
+  FlaskConical,
+  Wifi,
+  WifiOff
 } from './components/Icons'
 import './App.css'
 
@@ -32,6 +38,9 @@ ChartJS.register(
   LinearScale,
   PointElement,
   LineElement,
+  RadialLinearScale,
+  BarElement,
+  ArcElement,
   Title,
   Tooltip,
   Legend,
@@ -124,6 +133,7 @@ export default function App() {
   })
 
   const [theme, setTheme] = useState('light')
+  const [connectionStatus, setConnectionStatus] = useState('connecting') // connected, disconnected, connecting
 
   useEffect(() => {
     localStorage.setItem('waterVolume', waterVolume)
@@ -162,9 +172,23 @@ export default function App() {
         setData(latest)
         setFeeds(json.feeds)
         setLastUpdate(new Date().toLocaleTimeString())
+
+        // Check if data is stale (> 60 seconds)
+        const lastTime = new Date(latest.created_at).getTime()
+        const now = Date.now()
+        // Determine offset based on timezones if needed, but relative diff is safer
+        // Assuming server time and local time are reasonably synced or we use relative
+        // For simplicity contributing, we check if diff is very large
+        // Actually, ThingSpeak times are UTC. new Date(string) handles it.
+
+        // Let's use 60s threshold
+        const isStale = (now - lastTime) > 60000
+
+        setConnectionStatus(isStale ? 'disconnected' : 'connected')
       }
     } catch (err) {
       console.error("Error fetching data:", err)
+      setConnectionStatus('disconnected')
     } finally {
       setLoading(false)
     }
@@ -421,8 +445,10 @@ export default function App() {
           </div>
         </div>
         <div className="header-right">
-          <div className={`system-status ${loading ? 'system-stale' : 'system-active'}`}>
-            {loading ? '○ Syncing' : '● System Active'}
+          <div className={`system-status ${connectionStatus === 'connected' ? 'system-active' : connectionStatus === 'disconnected' ? 'system-offline' : 'system-stale'}`}>
+            {connectionStatus === 'connected' && '● System Active'}
+            {connectionStatus === 'disconnected' && '● Offline'}
+            {connectionStatus === 'connecting' && '○ Connecting...'}
           </div>
           <button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} title="Toggle Theme">
             {theme === 'light' ? '🌙' : '☀️'}
@@ -583,10 +609,10 @@ export default function App() {
         </div>
 
         <div className="stat-card animate-slide-up stagger-2 hover-scale">
-          <h4>Confidence</h4>
+          <h4>Data Confidence</h4>
           <div className="icon-wrapper orange" style={{ marginBottom: '12px' }}><Activity size={20} /></div>
-          <div className="stat-value">3 Indic.</div>
-          <div className="stat-sub">Flow, Turb, TDS matched</div>
+          <div className="stat-value">{[ph, temp, flow, turb, tds].filter(v => v !== '--').length}/5 Active</div>
+          <div className="stat-sub">Live Sensor Streams</div>
         </div>
 
         <div className="stat-card animate-slide-up stagger-3 hover-scale">
@@ -598,6 +624,19 @@ export default function App() {
         </div>
 
         <div className="stat-card animate-slide-up stagger-4 hover-scale">
+          <h4>Dev. Status</h4>
+          <div className={`icon-wrapper ${connectionStatus === 'connected' ? 'green' : connectionStatus === 'disconnected' ? 'red' : 'orange'}`} style={{ marginBottom: '12px' }}>
+            {connectionStatus === 'connected' ? <Wifi size={20} /> : connectionStatus === 'disconnected' ? <WifiOff size={20} /> : <Activity size={20} />}
+          </div>
+          <div className="stat-value">
+            {connectionStatus === 'connected' ? 'Online' : connectionStatus === 'disconnected' ? 'Offline' : 'Connecting'}
+          </div>
+          <div className="stat-sub">
+            {connectionStatus === 'connected' ? 'Signal Stable' : connectionStatus === 'disconnected' ? 'Check Power/Net' : 'Ping...'}
+          </div>
+        </div>
+
+        <div className="stat-card animate-slide-up stagger-4 hover-scale" style={{ animationDelay: '0.5s' }}>
           <h4>Last Maint.</h4>
           <div className="icon-wrapper green" style={{ marginBottom: '12px' }}><Settings size={20} /></div>
           <div className="stat-value">{daysSinceMaintenance}</div>
@@ -623,6 +662,81 @@ export default function App() {
         ) : (
           <div className="chart-placeholder">Collecting data… Chart will appear when data is available.</div>
         )}
+      </div>
+
+      {/* Advanced Visualizations: Deep Dive */}
+      <div className="top-section" style={{ marginTop: '32px' }}>
+        <div className="card rich-card animate-fade-in" style={{ animationDelay: '0.6s' }}>
+          <h3>Water Quality Profile</h3>
+          <p className="card-desc">Normalized metrics (0-100) to visualize balance.</p>
+          <div style={{ height: '300px', display: 'flex', justifyContent: 'center' }}>
+            <Radar
+              data={{
+                labels: ['pH', 'Temp', 'Flow', 'Turbidity', 'TDS'],
+                datasets: [{
+                  label: 'Current Status',
+                  data: [
+                    (Number(ph) / 14) * 100,
+                    (Number(temp) / 50) * 100,
+                    (Number(flow) / 100) * 100,
+                    (Number(turb) / 20) * 100,
+                    (Number(tds) / 1000) * 100
+                  ],
+                  backgroundColor: 'rgba(37, 99, 235, 0.2)',
+                  borderColor: '#2563eb',
+                  borderWidth: 2,
+                }]
+              }}
+              options={{
+                scales: {
+                  r: {
+                    suggestedMin: 0,
+                    suggestedMax: 100,
+                    grid: { color: 'rgba(0,0,0,0.1)' },
+                    angleLines: { color: 'rgba(0,0,0,0.1)' }
+                  }
+                },
+                plugins: { legend: { display: false } }
+              }}
+            />
+          </div>
+        </div>
+
+        <div className="card rich-card animate-fade-in" style={{ animationDelay: '0.7s' }}>
+          <h3>Safety Thresholds</h3>
+          <p className="card-desc">Current values vs. Recommended Limits.</p>
+          <div style={{ height: '300px' }}>
+            <Bar
+              data={{
+                labels: ['pH (Max 8.5)', 'Temp (Max 30°C)', 'Turb (Max 5 NTU)'],
+                datasets: [
+                  {
+                    label: 'Current Value',
+                    data: [Number(ph), Number(temp), Number(turb)],
+                    backgroundColor: ['#3b82f6', '#f59e0b', '#10b981'],
+                    borderRadius: 8,
+                  },
+                  {
+                    label: 'Safety Limit',
+                    data: [8.5, 30, 5],
+                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                    borderColor: '#ef4444',
+                    borderWidth: 2,
+                    type: 'line'
+                  }
+                ]
+              }}
+              options={{
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                  y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
+                  x: { grid: { display: false } }
+                }
+              }}
+            />
+          </div>
+        </div>
       </div>
 
       <div className="params animate-slide-up" style={{ animationDelay: '0.5s' }}>
