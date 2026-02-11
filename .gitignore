@@ -21,4 +21,4 @@ Thumbs.db
 dataset.csv
 
 # Arduino Secrets
-biofilim_jit_2026/secrets.h
+biofilim/secrets.h

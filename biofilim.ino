@@ -2,7 +2,7 @@
 #include <WebServer.h>
 #include <DHT.h>
 #include <ThingSpeak.h> // Install ThingSpeak Library by MathWorks
-#include "biofilim_jit_2026/secrets.h" // Adjusted path based on file location
+#include "biofilim/secrets.h" // Adjusted path based on file location
 
 /* ================= WIFI ================= */
 // Credentials moved to secrets.h
