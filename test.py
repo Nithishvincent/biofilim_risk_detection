@@ -1,5 +1,6 @@
 import requests
 import joblib
+import xgboost as xgb
 import numpy as np
 import time
 
@@ -14,7 +15,7 @@ ESP32_IP = os.getenv("ESP32_IP")
 THINGSPEAK_API_KEY = os.getenv("THINGSPEAK_API_KEY")
 THINGSPEAK_URL = "https://api.thingspeak.com/update"
 
-MODEL_PATH = "biofilm_risk_rf_regressor.pkl"
+MODEL_PATH = "biofilm_risk_xgboost.pkl"
 INTERVAL_SEC = 5   # ThingSpeak minimum = 15 sec
 # ===============================================
 

@@ -4,6 +4,7 @@ import joblib
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.model_selection import train_test_split
+import xgboost as xgb
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import (
     mean_absolute_error,
@@ -27,28 +28,27 @@ X_train, X_test, y_train, y_test = train_test_split(
 )
 
 # ===============================
-# RANDOM FOREST REGRESSOR
+# XGBOOST REGRESSOR
 # ===============================
-rf_reg = RandomForestRegressor(
+xgb_reg = xgb.XGBRegressor(
     n_estimators=300,
-    max_depth=14,
-    min_samples_split=5,
-    min_samples_leaf=2,
+    max_depth=6,
+    learning_rate=0.1,
     random_state=42,
     n_jobs=-1
 )
 
-rf_reg.fit(X_train, y_train)
+xgb_reg.fit(X_train, y_train)
 
 # ===============================
 # SAVE MODEL
 # ===============================
-joblib.dump(rf_reg, "biofilm_risk_rf_regressor.pkl")
+joblib.dump(xgb_reg, "biofilm_risk_xgboost.pkl")
 
 # ===============================
 # PREDICTION
 # ===============================
-y_pred = rf_reg.predict(X_test)
+y_pred = xgb_reg.predict(X_test)
 
 # ===============================
 # METRICS
@@ -90,7 +90,7 @@ plt.show()
 # ===============================
 # FEATURE IMPORTANCE
 # ===============================
-importance = rf_reg.feature_importances_
+importance = xgb_reg.feature_importances_
 
 plt.figure(figsize=(7, 4))
 sns.barplot(x=importance, y=X.columns)
