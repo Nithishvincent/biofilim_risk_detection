@@ -707,3 +707,14 @@ button:active {
 .stagger-4 {
   animation-delay: 0.4s;
 }
+
+/* Pulse Animation for System Active */
+@keyframes pulse-green {
+  0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+  70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+.pulse-animation {
+  animation: pulse-green 2s infinite;
+}

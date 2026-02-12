@@ -162,6 +162,18 @@ export default function App() {
     }
   }, [])
 
+  // Lock body scroll when settings modal is open
+  useEffect(() => {
+    if (showSettings) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = 'unset'
+    }
+    return () => {
+      document.body.style.overflow = 'unset'
+    }
+  }, [showSettings])
+
   const fetchData = async () => {
     try {
       // setLoading(true) // Don't block UI on background updates
@@ -226,9 +238,16 @@ export default function App() {
   const tds = rawTds
 
   // Calculate Risk
-  const riskScore = (ph !== '--' && temp !== '--' && turb !== '--' && flow !== '--' && tds !== '--')
-    ? predictBiofilmRisk(Number(temp), Number(ph), Number(turb), Number(flow), Number(tds))
-    : 0
+  // Calculate Risk
+  // PRIORITIZE ML MODEL from Backend (Field 7)
+  // If Field 7 is present, use it. Otherwise fallback to frontend heuristic.
+  const rawRisk = data && data.field7 ? Number(data.field7) : null
+
+  const riskScore = (rawRisk !== null)
+    ? rawRisk
+    : (ph !== '--' && temp !== '--' && turb !== '--' && flow !== '--' && tds !== '--')
+      ? predictBiofilmRisk(Number(temp), Number(ph), Number(turb), Number(flow), Number(tds))
+      : 0
 
   const riskPercent = (ph !== '--') ? riskScore + '%' : '--%'
 
@@ -326,13 +345,16 @@ export default function App() {
     datasets: [
       {
         label: 'Biofilm Risk %',
-        data: feeds.map(f => predictBiofilmRisk(
-          Number(f.field2) + offsets.temp,
-          Number(f.field1) + offsets.ph,
-          Number(f.field5),
-          Number(f.field4),
-          Number(f.field6) + offsets.tds
-        )),
+        data: feeds.map(f => {
+          if (f.field7) return Number(f.field7) // Use ML Model History
+          return predictBiofilmRisk(
+            Number(f.field2) + offsets.temp,
+            Number(f.field1) + offsets.ph,
+            Number(f.field5),
+            Number(f.field4),
+            Number(f.field6) + offsets.tds
+          )
+        }),
         borderColor: '#ef4444',
         backgroundColor: 'rgba(239, 68, 68, 0.2)',
         tension: 0.4,
@@ -340,13 +362,16 @@ export default function App() {
       },
       {
         label: 'System Health %',
-        data: feeds.map(f => 100 - predictBiofilmRisk(
-          Number(f.field2) + offsets.temp,
-          Number(f.field1) + offsets.ph,
-          Number(f.field5),
-          Number(f.field4),
-          Number(f.field6) + offsets.tds
-        )),
+        data: feeds.map(f => {
+          const r = f.field7 ? Number(f.field7) : predictBiofilmRisk(
+            Number(f.field2) + offsets.temp,
+            Number(f.field1) + offsets.ph,
+            Number(f.field5),
+            Number(f.field4),
+            Number(f.field6) + offsets.tds
+          )
+          return 100 - r
+        }),
         borderColor: '#10b981',
         backgroundColor: 'rgba(16, 185, 129, 0.1)',
         tension: 0.4,
@@ -448,8 +473,8 @@ export default function App() {
           </div>
         </div>
         <div className="header-right">
-          <div className={`system-status ${connectionStatus === 'connected' ? 'system-active' : 'system-offline'}`}>
-            {connectionStatus === 'connected' ? '● Online' : '● Offline (Last Logged Data)'}
+          <div className={`system-status ${connectionStatus === 'connected' ? 'system-active pulse-animation' : 'system-offline'}`}>
+            {connectionStatus === 'connected' ? '● System Active' : '● System Inactive (Last Logged)'}
           </div>
           <button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} title="Toggle Theme">
             {theme === 'light' ? '🌙' : '☀️'}
@@ -708,11 +733,30 @@ export default function App() {
           <p className="card-desc">Current values vs. Recommended Limits.</p>
           <div style={{ height: '300px' }}>
             <Bar
+              plugins={[{
+                id: 'limitLine',
+                afterDatasetsDraw: (chart) => {
+                  const { ctx, scales: { x }, chartArea: { top, bottom } } = chart
+                  if (!x) return
+                  const xValue = x.getPixelForValue(100)
+
+                  ctx.save()
+                  ctx.beginPath()
+                  ctx.lineWidth = 2
+                  ctx.strokeStyle = '#a0a0a0ff'
+                  ctx.setLineDash([6, 4])
+                  ctx.moveTo(xValue, top)
+                  ctx.lineTo(xValue, bottom)
+                  ctx.stroke()
+                  ctx.restore()
+                }
+              }]}
               data={{
                 labels: ['pH', 'Temperature', 'Turbidity'],
                 datasets: [
+                  // Layer 1: The Value Bar
                   {
-                    label: 'Safety Level (%)',
+                    label: 'Current Level',
                     data: [
                       (Number(ph) / 8.5) * 100,
                       (Number(temp) / 30) * 100,
@@ -720,68 +764,61 @@ export default function App() {
                     ],
                     backgroundColor: (context) => {
                       const val = context.raw
-                      if (val > 100) return 'rgba(239, 68, 68, 0.8)' // Red (Critical)
-                      if (val > 80) return 'rgba(245, 158, 11, 0.8)'  // Orange (Warning)
-                      return 'rgba(16, 185, 129, 0.8)'                // Green (Safe)
-                    },
-                    borderColor: (context) => {
-                      const val = context.raw
+                      // Red if Critical (>100%), otherwise Identity Color
                       if (val > 100) return '#ef4444'
-                      if (val > 80) return '#f59e0b'
-                      return '#10b981'
+
+                      // Identity Colors
+                      if (context.dataIndex === 0) return '#3b82f6' // pH: Blue
+                      if (context.dataIndex === 1) return '#f59e0b' // Temp: Orange
+                      if (context.dataIndex === 2) return '#10b981' // Turb: Green
+                      return '#64748b'
                     },
-                    borderWidth: 1,
-                    borderRadius: 4,
+                    borderRadius: 6,
                     barPercentage: 0.6,
-                    order: 2
+                    categoryPercentage: 0.8,
+                    order: 1, // Draw behind line
                   },
-                  // Limit Line (Red)
+                  // Layer 2: The Limit Line (Keep for Legend, but line drawn by plugin covers it)
                   {
-                    label: 'Critical Limit (100%)',
+                    label: 'Safety Limit',
                     data: [100, 100, 100],
                     type: 'line',
-                    borderColor: '#ef4444',
-                    borderWidth: 2,
+                    borderColor: '#ef4444', // Keep color for Legend
+                    borderWidth: 0,         // Hide the dataset line (drawn by plugin)
                     pointRadius: 0,
-                    borderDash: [5, 5],
+                    pointHoverRadius: 0,
+                    fill: false,
                     order: 0
-                  },
-                  // Warning Line (Orange)
-                  {
-                    label: 'Warning Threshold (80%)',
-                    data: [80, 80, 80],
-                    type: 'line',
-                    borderColor: '#f59e0b',
-                    borderWidth: 2,
-                    pointRadius: 0,
-                    borderDash: [2, 2],
-                    order: 1
                   }
                 ]
               }}
               options={{
-                indexAxis: 'y', // Horizontal Bars
+                indexAxis: 'y',
                 responsive: true,
                 maintainAspectRatio: false,
+                layout: {
+                  padding: { right: 30 } // Space for tooltips/labels
+                },
                 scales: {
                   x: {
                     beginAtZero: true,
-                    max: 130, // Leave room for over-limit values
+                    max: 120, // Enough room to show "Over Limit" bars
                     grid: { color: 'rgba(0,0,0,0.05)' },
-                    title: { display: true, text: '% of Safety Limit' }
+                    title: { display: true, text: '% of Safe Limit' }
                   },
                   y: {
                     grid: { display: false },
-                    ticks: { font: { weight: 'bold' } }
+                    ticks: {
+                      font: { weight: 'bold', size: 12 },
+                      autoSkip: false
+                    }
                   }
                 },
                 plugins: {
                   legend: {
                     display: true,
-                    labels: {
-                      usePointStyle: true,
-                      boxWidth: 8
-                    }
+                    position: 'bottom',
+                    labels: { usePointStyle: true, padding: 20 }
                   },
                   tooltip: {
                     backgroundColor: 'rgba(255, 255, 255, 0.95)',
@@ -789,37 +826,21 @@ export default function App() {
                     bodyColor: '#475569',
                     borderColor: '#e2e8f0',
                     borderWidth: 1,
-                    padding: 10,
+                    padding: 12,
+                    boxPadding: 4,
                     callbacks: {
-                      title: (items) => {
-                        const idx = items[0].dataIndex
-                        if (idx === 0) return 'pH Level'
-                        if (idx === 1) return 'Temperature'
-                        if (idx === 2) return 'Turbidity'
-                        return items[0].label
-                      },
                       label: (context) => {
-                        if (context.dataset.type === 'line') return `${context.dataset.label}`
+                        const val = context.raw
+                        // Generic label for limit line
+                        if (context.dataset.label === 'Safety Limit') return 'Safety Limit: 100%'
 
-                        let realVal = 0
-                        let limit = 0
-                        let unit = ''
-
+                        let realVal = 0, limit = 0, unit = ''
                         if (context.dataIndex === 0) { realVal = Number(ph); limit = 8.5; unit = '' }
                         if (context.dataIndex === 1) { realVal = Number(temp); limit = 30; unit = '°C' }
                         if (context.dataIndex === 2) { realVal = Number(turb); limit = 5; unit = 'NTU' }
 
-                        const pct = context.raw.toFixed(1)
-                        let status = 'Safe'
-                        if (pct > 80) status = 'Warning'
-                        if (pct > 100) status = 'CRITICAL'
-
-                        return [
-                          `Status: ${status}`,
-                          `Current: ${realVal}${unit}`,
-                          `Limit: ${limit}${unit}`,
-                          `Utilization: ${pct}%`
-                        ]
+                        const pct = val.toFixed(1)
+                        return `${realVal}${unit} (Limit: ${limit}${unit}) • ${pct}%`
                       }
                     }
                   }
