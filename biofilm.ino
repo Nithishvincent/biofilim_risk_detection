@@ -2,7 +2,7 @@
 #include <WebServer.h>
 #include <DHT.h>
 #include <ThingSpeak.h> // Install ThingSpeak Library by MathWorks
-#include "biofilim/secrets.h" // Adjusted path based on file location
+#include "biofilm/secrets.h" // Adjusted path based on file location
 
 /* ================= WIFI ================= */
 // Credentials moved to secrets.h
@@ -131,7 +131,8 @@ void loop() {
   Serial.print(" | Turb: "); Serial.print(turbidityValue);
   Serial.print(" | TDS: "); Serial.println(tdsValue);
 
-  /* ===== ThingSpeak Push (Every 20s) ===== */
+  /* ===== ThingSpeak Push (DISABLED - Python Script handles this) ===== */
+  /* 
   if (millis() % 20000 < 1000) { // Simple non-blocking timer
     ThingSpeak.setField(1, phValue);
     ThingSpeak.setField(2, temperature);
@@ -140,13 +141,6 @@ void loop() {
     ThingSpeak.setField(5, turbidityValue);
     ThingSpeak.setField(6, tdsValue);
     
-    // Risk score calculation on device (optional, or just send raw)
-    // Field 7: Risk Score? Let's verify what the dashboard expects.
-    // Dashboard expects risk_score on field 7, status on field 8?
-    // Let's check App.jsx again.
-    // field1: pH, field2: Temp, field3: Humidity, field4: Flow, field5: Turbidity, field6: TDS, field7: Risk, field8: Status
-    
-    // Calculate simple risk for display
     float risk = 0;
     if (phValue < 6.5 || phValue > 8.5) risk += 20;
     if (temperature > 30) risk += 20;
@@ -165,6 +159,7 @@ void loop() {
       Serial.println("Problem updating channel. HTTP error code " + String(x));
     }
   }
+  */
 
   delay(1000);
 }

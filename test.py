@@ -18,7 +18,11 @@ load_dotenv()
 
 # Configuration
 ESP32_IP = os.getenv("ESP32_IP", "192.168.137.9")
-URL_SENSOR = f"http://{ESP32_IP}/"
+# Handle IP or Full URL from env
+if ESP32_IP.startswith("http"):
+    URL_SENSOR = ESP32_IP
+else:
+    URL_SENSOR = f"http://{ESP32_IP}/status"
 THINGSPEAK_API_KEY = os.getenv("THINGSPEAK_API_KEY", "YOUR_API_KEY")
 THINGSPEAK_URL = f"https://api.thingspeak.com/update?api_key={THINGSPEAK_API_KEY}"
 
