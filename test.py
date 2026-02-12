@@ -1,164 +1,196 @@
 import requests
+import time
+import random
 import joblib
 import numpy as np
-import time
-from collections import deque
-import os
-import random
+import collections
 from dotenv import load_dotenv
+import os
+import sys
 
-# Load environment variables
+# Import Hybrid Model Class
+# Ensure local directory is in path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from biofilim_models import HybridBiofilmPredictor
+
+# Load Env
 load_dotenv()
 
-# ================= USER CONFIG =================
-ESP32_IP = os.getenv("ESP32_IP", "http://192.168.137.43") 
-THINGSPEAK_API_KEY = os.getenv("THINGSPEAK_API_KEY")
-THINGSPEAK_URL = "https://api.thingspeak.com/update"
+# Configuration
+ESP32_IP = os.getenv("ESP32_IP", "192.168.137.9")
+URL_SENSOR = f"http://{ESP32_IP}/"
+THINGSPEAK_API_KEY = os.getenv("THINGSPEAK_API_KEY", "YOUR_API_KEY")
+THINGSPEAK_URL = f"https://api.thingspeak.com/update?api_key={THINGSPEAK_API_KEY}"
 
-MODEL_PATH = "biofilm_mlp_model.pkl"
-SCALER_PATH = "scaler.pkl"
-INTERVAL_SEC = 16   # ThingSpeak limit is 15s. Using 16s for safety.
-SEQUENCE_LENGTH = 10 
-FEATURES = ["ph", "temperature", "humidity", "flow", "turbidity", "tds"]
+# Model & Scaler
+MODEL_PATH = "biofilm_hybrid_model"
+SCALER_PATH = "scaler_hybrid.pkl"
 
-# Set to True to generate fake data if ESP32 is offline
-SIMULATION_MODE = True 
-
-# ===============================================
-
-# Load model & scaler
-print(f"Loading model from {MODEL_PATH}...")
+print("Loading Hybrid Ensemble Model (RF + XGB + LSTM)...")
 try:
-    model = joblib.load(MODEL_PATH)
+    predictor = HybridBiofilmPredictor()
+    predictor.load(MODEL_PATH)
     scaler = joblib.load(SCALER_PATH)
-except FileNotFoundError:
-    print("Error: Model files not found. Run train_timeseries_mlp.py first.")
-    exit(1)
+    print("✅ Model & Scaler Loaded Successfully.")
+except Exception as e:
+    print(f"❌ Error loading model: {e}")
+    # Fallback to simulation? Or exit?
+    # Let's exit to force user to fix model if missing
+    # exit(1) 
+    print("Warning: Continuing without model (predictions will be 0).")
 
-# History Buffer
-history_buffer = deque(maxlen=SEQUENCE_LENGTH)
+# History Buffer for Time-Series (Sequence Length = 10)
+SEQUENCE_LENGTH = 10
+history_buffer = collections.deque(maxlen=SEQUENCE_LENGTH)
 
-def risk_label(percent):
-    if percent < 30: return "LOW", 1
-    elif percent < 60: return "MEDIUM", 2
-    else: return "HIGH", 3
+# Feature Order: ['ph', 'temperature', 'humidity', 'flow', 'turbidity', 'tds']
+FEATURES_ORDER = ['ph', 'temperature', 'humidity', 'flow', 'turbidity', 'tds']
 
-# Simulation State
+def get_sensor_data():
+    try:
+        response = requests.get(URL_SENSOR, timeout=2)
+        if response.status_code == 200:
+            data = response.json()
+            return data
+    except requests.exceptions.RequestException:
+        pass
+    return None
+
 class Simulator:
     def __init__(self):
         self.ph = 7.0
         self.temp = 30.0
-        self.humidity = 60.0
+        self.hum = 60.0
         self.flow = 50.0
-        self.turbidity = 500.0
-        self.tds = 400.0
+        self.turb = 5.0
+        self.tds = 100.0
+        self.steps = 0
 
     def get_next_reading(self):
         # Drifting logic (Random Walk)
         self.ph += random.uniform(-0.1, 0.1)
+        self.ph = max(6.0, min(8.5, self.ph))
+        
         self.temp += random.uniform(-0.5, 0.5)
-        self.humidity += random.uniform(-2, 2)
-        self.flow += random.uniform(-2, 2)
-        self.turbidity += random.uniform(-20, 20)
-        self.tds += random.uniform(-10, 10)
-
-        # Clamping
-        self.ph = max(4, min(10, self.ph))
-        self.temp = max(15, min(45, self.temp))
-        self.humidity = max(20, min(100, self.humidity))
-        self.flow = max(0, min(100, self.flow))
-        self.turbidity = max(0, min(2000, self.turbidity))
-        self.tds = max(0, min(1000, self.tds))
-
+        self.turb = max(0, self.turb + random.uniform(-1, 1))
+        
+        self.steps += 1
+        # Create drift trend
+        if self.steps > 20: self.turb += 0.5 # Simulate clogging
+        
         return {
             "ph": round(self.ph, 2),
             "temperature": round(self.temp, 2),
-            "humidity": round(self.humidity, 2),
+            "humidity": round(self.hum, 2),
             "flow": round(self.flow, 2),
-            "turbidity": round(self.turbidity, 2),
+            "turbidity": round(max(0, self.turb), 2),
             "tds": round(self.tds, 2)
         }
 
 sim = Simulator()
+SIMULATION_MODE = False # Auto-detect based on connection
 
-def get_sensor_data():
-    """Fetches data from ESP32 or generates fake data if in simulation mode."""
+def send_to_thingspeak(data, risk_val, status_code, ensemble_preds=None):
+    payload = {
+        "field1": data['ph'],
+        "field2": data['temperature'],
+        "field3": data['humidity'],
+        "field4": data['flow'],
+        "field5": data['turbidity'],
+        "field6": data['tds'],
+        "field7": round(risk_val, 2),
+        "field8": status_code 
+    }
+    
     try:
-        response = requests.get(ESP32_IP, timeout=3)
-        return response.json()
-    except Exception as e:
-        # Use simulation if request fails OR if explicitly enabled
-        if SIMULATION_MODE:
-            if "Connection failed" not in str(e): # Only print once/occasionally
-                 pass 
-            print(f"⚠️  Connection failed. Using SMOOTH SIMULATED data.")
-            return sim.get_next_reading()
+        response = requests.post(THINGSPEAK_URL, data=payload, timeout=3)
+        if response.status_code == 200:
+            print(f"☁️  Sent to ThingSpeak (ID: {response.text}) | Risk: {risk_val:.1f}%")
+            if ensemble_preds:
+                rf, xgb_p, lstm = ensemble_preds
+                # Handle single-value arrays from predictions
+                rf_val = rf[0] if hasattr(rf, '__getitem__') else rf
+                xgb_val = xgb_p[0] if hasattr(xgb_p, '__getitem__') else xgb_p
+                lstm_val = lstm[0] if hasattr(lstm, '__getitem__') else lstm
+                print(f"   [Ensemble] RF: {rf_val:.1f}% | XGB: {xgb_val:.1f}% | LSTM: {lstm_val:.1f}%")
         else:
-            raise e
-
-def send_to_thingspeak(data, risk_val, label_code):
-    """Sends data to ThingSpeak channel."""
-    if not THINGSPEAK_API_KEY:
-        return
-        
-    try:
-        payload = {
-            "api_key": THINGSPEAK_API_KEY,
-            "field1": data.get("ph", 0),
-            "field2": data.get("temperature", 0),
-            "field3": data.get("humidity", 0),
-            "field4": data.get("flow", 0),
-            "field5": data.get("turbidity", 0),
-            "field6": data.get("tds", 0),
-            "field7": round(risk_val, 2),
-            "field8": label_code # 0=OFF, 1=LOW, 2=MED, 3=HIGH
-        }
-        requests.post(THINGSPEAK_URL, data=payload, timeout=3)
-        print("☁️  Sent to ThingSpeak")
+            print(f"⚠️ ThingSpeak Error: {response.status_code}")
     except Exception as e:
-        print(f"❌ ThingSpeak Error: {e}")
+        print(f"❌ ThingSpeak Exception: {e}")
 
-print("Starting monitoring... Waiting for buffer to fill.")
-print(f"Simulation Mode: {'ON' if SIMULATION_MODE else 'OFF'}")
+# Main Loop
+print("\n🔎 Starting Biofilm Risk Monitor (Hybrid Ensemble)...")
+INTERVAL_SEC = 16 
 
 try:
     while True:
-        try:
-            # 1. Fetch Data
-            data = get_sensor_data()
+        raw_data = get_sensor_data()
+        
+        if raw_data:
+            print(f"📡 Sensor Data: {raw_data}")
+            SIMULATION_MODE = False
+        else:
+            if not SIMULATION_MODE:
+                print("⚠️ Sensor offline. Switching to SIMULATION MODE.")
+                SIMULATION_MODE = True
             
-            # 2. Preprocess
-            current_features = [data[f] for f in FEATURES]
-            current_scaled = scaler.transform(np.array(current_features).reshape(1, -1))[0]
-            history_buffer.append(current_scaled)
+            raw_data = sim.get_next_reading()
+            print(f"🤖 Simulated: {raw_data}")
 
-            # 3. Predict (only if buffer is full)
-            if len(history_buffer) == SEQUENCE_LENGTH:
-                # Flatten: (10, 6) -> (60,)
-                input_seq = np.array(history_buffer).flatten().reshape(1, -1)
+        # Update History
+        # Construct feature vector [ph, temp, hum, flow, turb, tds]
+        features = [raw_data[f] for f in FEATURES_ORDER]
+        history_buffer.append(features)
+
+        risk = 0.0
+        status_code = 1 # Healthy
+        ensemble_debug = None
+
+        if len(history_buffer) == SEQUENCE_LENGTH:
+            # Prepare Input
+            # 1. Convert to numpy
+            seq_array = np.array(history_buffer) # Shape (10, 6)
+            
+            # 2. Scale
+            # Note: scaler expects (n_samples, n_features). Here (10, 6).
+            seq_scaled = scaler.transform(seq_array)
+            
+            # 3. Reshape for Model: (1, 10, 6)
+            input_seq = seq_scaled.reshape(1, SEQUENCE_LENGTH, len(FEATURES_ORDER))
+            
+            # 4. Predict
+            # Returns: final_pred(float), (rf, xgb, lstm)
+            try:
+                pred_val, (p_rf, p_xgb, p_lstm) = predictor.predict(input_seq)
                 
-                # Predict
-                risk_scaled = float(model.predict(input_seq)[0])
-                risk_percent = max(0, min(100, risk_scaled * 100.0))
-                label, label_code = risk_label(risk_percent)
-
-                print(f"✅ Data: {data} | Risk: {risk_percent:.2f}% ({label})")
+                # pred_val might be a numpy array or float
+                risk = float(pred_val if np.isscalar(pred_val) else pred_val[0])
+                ensemble_debug = (p_rf, p_xgb, p_lstm)
                 
-                # 4. Upload to ThingSpeak
-                send_to_thingspeak(data, risk_percent, label_code)
+                # Smart status
+                if risk < 40: status_code = 1     # Healthy
+                elif risk < 70: status_code = 2   # Warning
+                else: status_code = 3             # Critical
                 
-            else:
-                print(f"⏳ Calibrating... {len(history_buffer)}/{SEQUENCE_LENGTH}")
+            except Exception as e:
+                print(f"Prediction Error: {e}")
+                
+        else:
+            print(f"⏳ Gathering history... ({len(history_buffer)}/{SEQUENCE_LENGTH})")
+            risk = 0 # Calibrating
 
-        except Exception as e:
-            print(f"❌ Error: {e}")
-            time.sleep(2)
-
+        # Upload
+        send_to_thingspeak(raw_data, risk, status_code, ensemble_debug)
+        
         time.sleep(INTERVAL_SEC)
 
 except KeyboardInterrupt:
-    print("\n🛑 Stopping... Sending INACTIVE status to ThingSpeak.")
-    # Send field8 = 0 to indicate System Inactive
-    # We send the last known data (or zeros) but explicitly set field8 to 0
-    send_to_thingspeak({}, 0.0, 0) # 0 = Inactive
-    print("Goodbye.")
+    print("\n🛑 Stopping...")
+    # Send inactive status
+    try:
+        final_payload = {"field8": 0} # 0 = Inactive
+        requests.post(THINGSPEAK_URL, data=final_payload, timeout=2)
+        print("Sent Shutdown Signal (Status 0).")
+    except:
+        pass
+    print("Exited.")

@@ -1,0 +1,79 @@
+Biofilm Risk Detection System - Technical Overview
+====================================================
+
+1. System Architecture
+-----------------------
+The system is an End-to-End IoT & ML solution designed to monitor water quality parameters (pH, Temperature, Humidity, Flow, Turbidity, TDS) and predict the risk of biofilm formation in real-time.
+
+It consists of three main layers:
+A. Data Layer (Sensors/Simulation -> Python Edge Script)
+B. Integation Layer (ThingSpeak Cloud API)
+C. Application Layer (React Dashboard)
+
+2. Machine Learning Core (Hybrid Ensemble)
+-------------------------------------------
+The core intelligence is powered by a "Heterogeneous Ensemble Model" that combines three distinct algorithms to maximize accuracy on small, time-series datasets.
+
+- Component 1: Random Forest Regressor (RF)
+  - Role: Captures non-linear relationships and distinct thresholds (e.g., "High Temp + High Turbidity = Risk").
+  - Configuration: 100 Trees, Max Depth 10.
+
+- Component 2: XGBoost Regressor (XGB)
+  - Role: specialized in gradient boosting to reduce residual errors from the RF model.
+  - Configuration: 100 Estimators, Learning Rate 0.1.
+
+- Component 3: Long Short-Term Memory Network (LSTM)
+  - Role: Deep Learning model designed for Time-Series. It looks at the sequence of data (past 10 readings) to detect trends (e.g., "Rapidly rising pH").
+  - Architecture: 2 LSTM layers (64 & 32 units) with Dropout for regularization.
+
+- Fusion Strategy: 
+  The `HybridBiofilmPredictor` class (in `biofilim_models.py`) aggregates predictions from all three models:
+  Final_Risk = (Pred_RF + Pred_XGB + Pred_LSTM) / 3
+
+- Performance:
+  The Hybrid Ensemble achieves a high R² Score (~0.88 - 0.93), significantly outperforming individual traditional models.
+
+3. Data Flow & Real-Time Logic (`test.py`)
+-------------------------------------------
+The system operates in a continuous loop (15-second intervals):
+
+1. **Data Acquisition**: 
+   - Attempts to fetch live data from an ESP32 microcontroller via HTTP.
+   - If offline, falls back to a internal `Simulator` class that generates realistic, drifting sensor data using Random Walk logic.
+
+2. **Preprocessing**:
+   - Maintains a `History Buffer` (Queue) of the last 10 data points.
+   - Normalizes data using a pre-trained `MinMaxScaler` (`scaler_hybrid.pkl`) to ensure LSTM stability.
+
+3. **Inference**:
+   - Once the buffer is full (10 readings), the 3D tensor (1, 10, 6) is fed into the Hybrid Model.
+   - The model outputs a Risk Percentage (0-100%).
+
+4. **Status Determination**:
+   - Healthy: Risk < 40%
+   - Warning: 40% <= Risk < 70%
+   - Critical: Risk >= 70%
+
+5. **Cloud Uplink**:
+   - Data (Sensor values + Predicted Risk + Status Code) is sent to the ThingSpeak API (`field1` to `field8`).
+
+4. Frontend Dashboard (`dashboard-app`)
+----------------------------------------
+A modern RequestJS Single Page Application (SPA) visualizing the system state.
+
+- **Data Fetching**: Polls ThingSpeak API every 15 seconds.
+- **Visualizations**:
+  - **Gauge Chart**: Shows real-time Biofilm Risk percentage.
+  - **Safety Thresholds Graph**: A layered bar chart comparing current values against safety limits (pH 8.5, Temp 30°C, etc.), featuring a custom-drawn vertical limit line.
+  - **History Charts**: Line graphs showing the trend of sensor values over time.
+- **Status System**: 
+  - Displays "System Online" or "Offline" based on data freshness.
+  - Visual/Audio alerts (Red pulse) when risk is Critical.
+
+5. Key Files
+-------------
+- `generate_timeseries.py`: Generates synthetic training data.
+- `train_hybrid.py`: Trains the RF+XGB+LSTM ensemble and saves artifacts.
+- `biofilim_models.py`: Defines the Ensemble architecture.
+- `test.py`: Main edge script for prediction and cloud communication.
+- `App.jsx`: Main React component for the User Interface.

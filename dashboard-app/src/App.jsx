@@ -249,7 +249,7 @@ export default function App() {
       ? predictBiofilmRisk(Number(temp), Number(ph), Number(turb), Number(flow), Number(tds))
       : 0
 
-  const riskPercent = (ph !== '--') ? riskScore + '%' : '--%'
+  const riskPercent = (ph !== '--') ? Number(riskScore).toFixed(1) + '%' : '--%'
 
   // Auto-maintenance suggestion
   useEffect(() => {
@@ -295,7 +295,7 @@ export default function App() {
   const biofilmStage = getBiofilmStage(riskScore)
 
   // System Health (Inverse of Risk for demo)
-  const healthPct = (ph !== '--') ? (100 - riskScore) : 0
+  const healthPct = (ph !== '--') ? Number((100 - riskScore).toFixed(1)) : 0
   const healthColor = healthPct > 70 ? 'var(--success-gradient)' : healthPct > 40 ? 'var(--warning-gradient)' : 'var(--danger-gradient)'
 
   // Contributing Factors

@@ -1,4 +1,11 @@
-requests
-joblib
-numpy
+flask
 python-dotenv
+pandas
+numpy
+scikit-learn
+joblib
+requests
+tensorflow
+xgboost
+matplotlib
+seaborn
