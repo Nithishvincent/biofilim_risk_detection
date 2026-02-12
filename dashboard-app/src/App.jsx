@@ -708,21 +708,31 @@ export default function App() {
           <div style={{ height: '300px' }}>
             <Bar
               data={{
-                labels: ['pH (Max 8.5)', 'Temp (Max 30°C)', 'Turb (Max 5 NTU)'],
+                labels: ['pH (Limit 8.5)', 'Temp (Limit 30°C)', 'Turb (Limit 5 NTU)'],
                 datasets: [
                   {
-                    label: 'Current Value',
-                    data: [Number(ph), Number(temp), Number(turb)],
-                    backgroundColor: ['#3b82f6', '#f59e0b', '#10b981'],
-                    borderRadius: 8,
+                    label: 'Current Level (% of Limit)', // Label for legend
+                    data: [
+                      (Number(ph) / 8.5) * 100,
+                      (Number(temp) / 30) * 100,
+                      (Number(turb) / 5) * 100
+                    ],
+                    backgroundColor: (context) => {
+                      const val = context.raw
+                      return val > 100 ? '#ef4444' : '#3b82f6' // Red if over limit
+                    },
+                    borderRadius: 4,
+                    barPercentage: 0.6,
                   },
                   {
                     label: 'Safety Limit',
-                    data: [8.5, 30, 5],
-                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                    data: [100, 100, 100], // Normalized to 100%
                     borderColor: '#ef4444',
                     borderWidth: 2,
-                    type: 'line'
+                    borderDash: [5, 5],
+                    pointRadius: 0,
+                    type: 'line',
+                    order: 0 // Draw on top
                   }
                 ]
               }}
@@ -730,8 +740,30 @@ export default function App() {
                 responsive: true,
                 maintainAspectRatio: false,
                 scales: {
-                  y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
+                  y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(0,0,0,0.05)' },
+                    title: { display: true, text: '% of Safety Limit' }
+                  },
                   x: { grid: { display: false } }
+                },
+                plugins: {
+                  tooltip: {
+                    callbacks: {
+                      label: (context) => {
+                        // Custom tooltip to show REAL values
+                        if (context.dataset.type === 'line') return 'Safety Limit: 100%'
+
+                        let realVal = 0
+                        let limit = 0
+                        if (context.dataIndex === 0) { realVal = Number(ph); limit = 8.5 }
+                        if (context.dataIndex === 1) { realVal = Number(temp); limit = 30 }
+                        if (context.dataIndex === 2) { realVal = Number(turb); limit = 5 }
+
+                        return `Current: ${realVal} (Limit: ${limit})`
+                      }
+                    }
+                  }
                 }
               }}
             />
