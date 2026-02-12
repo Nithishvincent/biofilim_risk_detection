@@ -176,15 +176,18 @@ export default function App() {
         // Check if data is stale (> 60 seconds)
         const lastTime = new Date(latest.created_at).getTime()
         const now = Date.now()
-        // Determine offset based on timezones if needed, but relative diff is safer
-        // Assuming server time and local time are reasonably synced or we use relative
-        // For simplicity contributing, we check if diff is very large
-        // Actually, ThingSpeak times are UTC. new Date(string) handles it.
-
-        // Let's use 60s threshold
         const isStale = (now - lastTime) > 60000
 
-        setConnectionStatus(isStale ? 'disconnected' : 'connected')
+        // Check Status Code (Field 8) and Staleness
+        // 0 = Manual Shutdown
+        // >60s = Timeout/Crash
+        const statusCode = Number(latest.field8)
+
+        if (statusCode === 0 || isStale) {
+          setConnectionStatus('disconnected') // Consolidate to "Offline"
+        } else {
+          setConnectionStatus('connected') // Active
+        }
       }
     } catch (err) {
       console.error("Error fetching data:", err)
@@ -445,10 +448,8 @@ export default function App() {
           </div>
         </div>
         <div className="header-right">
-          <div className={`system-status ${connectionStatus === 'connected' ? 'system-active' : connectionStatus === 'disconnected' ? 'system-offline' : 'system-stale'}`}>
-            {connectionStatus === 'connected' && '● System Active'}
-            {connectionStatus === 'disconnected' && '● Offline'}
-            {connectionStatus === 'connecting' && '○ Connecting...'}
+          <div className={`system-status ${connectionStatus === 'connected' ? 'system-active' : 'system-offline'}`}>
+            {connectionStatus === 'connected' ? '● Online' : '● Offline (Last Logged Data)'}
           </div>
           <button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} title="Toggle Theme">
             {theme === 'light' ? '🌙' : '☀️'}
@@ -625,14 +626,14 @@ export default function App() {
 
         <div className="stat-card animate-slide-up stagger-4 hover-scale">
           <h4>Dev. Status</h4>
-          <div className={`icon-wrapper ${connectionStatus === 'connected' ? 'green' : connectionStatus === 'disconnected' ? 'red' : 'orange'}`} style={{ marginBottom: '12px' }}>
-            {connectionStatus === 'connected' ? <Wifi size={20} /> : connectionStatus === 'disconnected' ? <WifiOff size={20} /> : <Activity size={20} />}
+          <div className={`icon-wrapper ${connectionStatus === 'connected' ? 'green' : 'red'}`} style={{ marginBottom: '12px' }}>
+            {connectionStatus === 'connected' ? <Wifi size={20} /> : <WifiOff size={20} />}
           </div>
           <div className="stat-value">
-            {connectionStatus === 'connected' ? 'Online' : connectionStatus === 'disconnected' ? 'Offline' : 'Connecting'}
+            {connectionStatus === 'connected' ? 'Online' : 'Offline'}
           </div>
           <div className="stat-sub">
-            {connectionStatus === 'connected' ? 'Signal Stable' : connectionStatus === 'disconnected' ? 'Check Power/Net' : 'Ping...'}
+            {connectionStatus === 'connected' ? 'Signal Stable' : 'Last Logged Data'}
           </div>
         </div>
 
