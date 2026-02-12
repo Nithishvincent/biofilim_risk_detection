@@ -79,5 +79,5 @@ The script will:
 4.  Print the result to the console.
 5.  Upload the data to ThingSpeak.
 
-[Link 🔗](https://biofilim-risk-detection-493o3v8ow-nithish-vs-projects.vercel.app/)
+🔗[Link ](https://biofilim-risk-detection.vercel.app/)
 
