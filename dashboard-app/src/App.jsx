@@ -708,10 +708,10 @@ export default function App() {
           <div style={{ height: '300px' }}>
             <Bar
               data={{
-                labels: ['pH (Limit 8.5)', 'Temp (Limit 30°C)', 'Turb (Limit 5 NTU)'],
+                labels: ['pH', 'Temperature', 'Turbidity'],
                 datasets: [
                   {
-                    label: 'Current Level (% of Limit)', // Label for legend
+                    label: 'Safety Level (%)',
                     data: [
                       (Number(ph) / 8.5) * 100,
                       (Number(temp) / 30) * 100,
@@ -719,48 +719,106 @@ export default function App() {
                     ],
                     backgroundColor: (context) => {
                       const val = context.raw
-                      return val > 100 ? '#ef4444' : '#3b82f6' // Red if over limit
+                      if (val > 100) return 'rgba(239, 68, 68, 0.8)' // Red (Critical)
+                      if (val > 80) return 'rgba(245, 158, 11, 0.8)'  // Orange (Warning)
+                      return 'rgba(16, 185, 129, 0.8)'                // Green (Safe)
                     },
+                    borderColor: (context) => {
+                      const val = context.raw
+                      if (val > 100) return '#ef4444'
+                      if (val > 80) return '#f59e0b'
+                      return '#10b981'
+                    },
+                    borderWidth: 1,
                     borderRadius: 4,
                     barPercentage: 0.6,
+                    order: 2
                   },
+                  // Limit Line (Red)
                   {
-                    label: 'Safety Limit',
-                    data: [100, 100, 100], // Normalized to 100%
+                    label: 'Critical Limit (100%)',
+                    data: [100, 100, 100],
+                    type: 'line',
                     borderColor: '#ef4444',
                     borderWidth: 2,
-                    borderDash: [5, 5],
                     pointRadius: 0,
+                    borderDash: [5, 5],
+                    order: 0
+                  },
+                  // Warning Line (Orange)
+                  {
+                    label: 'Warning Threshold (80%)',
+                    data: [80, 80, 80],
                     type: 'line',
-                    order: 0 // Draw on top
+                    borderColor: '#f59e0b',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    borderDash: [2, 2],
+                    order: 1
                   }
                 ]
               }}
               options={{
+                indexAxis: 'y', // Horizontal Bars
                 responsive: true,
                 maintainAspectRatio: false,
                 scales: {
-                  y: {
+                  x: {
                     beginAtZero: true,
+                    max: 130, // Leave room for over-limit values
                     grid: { color: 'rgba(0,0,0,0.05)' },
                     title: { display: true, text: '% of Safety Limit' }
                   },
-                  x: { grid: { display: false } }
+                  y: {
+                    grid: { display: false },
+                    ticks: { font: { weight: 'bold' } }
+                  }
                 },
                 plugins: {
+                  legend: {
+                    display: true,
+                    labels: {
+                      usePointStyle: true,
+                      boxWidth: 8
+                    }
+                  },
                   tooltip: {
+                    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                    titleColor: '#1e293b',
+                    bodyColor: '#475569',
+                    borderColor: '#e2e8f0',
+                    borderWidth: 1,
+                    padding: 10,
                     callbacks: {
+                      title: (items) => {
+                        const idx = items[0].dataIndex
+                        if (idx === 0) return 'pH Level'
+                        if (idx === 1) return 'Temperature'
+                        if (idx === 2) return 'Turbidity'
+                        return items[0].label
+                      },
                       label: (context) => {
-                        // Custom tooltip to show REAL values
-                        if (context.dataset.type === 'line') return 'Safety Limit: 100%'
+                        if (context.dataset.type === 'line') return `${context.dataset.label}`
 
                         let realVal = 0
                         let limit = 0
-                        if (context.dataIndex === 0) { realVal = Number(ph); limit = 8.5 }
-                        if (context.dataIndex === 1) { realVal = Number(temp); limit = 30 }
-                        if (context.dataIndex === 2) { realVal = Number(turb); limit = 5 }
+                        let unit = ''
 
-                        return `Current: ${realVal} (Limit: ${limit})`
+                        if (context.dataIndex === 0) { realVal = Number(ph); limit = 8.5; unit = '' }
+                        if (context.dataIndex === 1) { realVal = Number(temp); limit = 30; unit = '°C' }
+                        if (context.dataIndex === 2) { realVal = Number(turb); limit = 5; unit = 'NTU' }
+
+                        const pct = context.raw.toFixed(1)
+                        let status = 'Safe'
+                        if (pct > 80) status = 'Warning'
+                        if (pct > 100) status = 'CRITICAL'
+
+                        return [
+                          `Status: ${status}`,
+                          `Current: ${realVal}${unit}`,
+                          `Limit: ${limit}${unit}`,
+                          `Utilization: ${pct}%`
+                        ]
                       }
                     }
                   }
