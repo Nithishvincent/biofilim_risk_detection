@@ -22,3 +22,31 @@ dataset.csv
 
 # Arduino Secrets
 biofilim/secrets.h
+
+# Virtual Environment
+.venv/
+env/
+
+# Node/React
+node_modules/
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ML Artifacts (Large Files)
+*.keras
+*.h5
+*.model
+*.png
+# Keep evaluation plots generally out of git unless desired, but user might want them. 
+# Let's ignore them to keep repo clean as they are generated.
+hybrid_model_evaluation.png
+eval_*.png
+
+# Logs and Results
+*.log
+results.txt
+final_results.txt
+project_technical_overview.txt
+
