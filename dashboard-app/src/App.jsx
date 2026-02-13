@@ -31,6 +31,8 @@ import {
   Wifi,
   WifiOff
 } from './components/Icons'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 import './App.css'
 
 ChartJS.register(
@@ -454,6 +456,78 @@ export default function App() {
     a.click()
   }
 
+  const generatePDF = () => {
+    const doc = new jsPDF()
+    const now = new Date().toLocaleString()
+
+    // Title
+    doc.setFontSize(22)
+    doc.setTextColor(37, 99, 235) // Primary Blue
+    doc.text("Biofilm Risk Detection Report", 14, 20)
+
+    // Meta Info
+    doc.setFontSize(10)
+    doc.setTextColor(100)
+    doc.text(`Generated: ${now}`, 14, 28)
+    doc.text(`System Status: ${connectionStatus === 'connected' ? 'Online' : 'Offline'}`, 14, 33)
+
+    // Executive Summary
+    doc.setFontSize(14)
+    doc.setTextColor(0)
+    doc.text("Executive Summary", 14, 45)
+
+    doc.setFontSize(11)
+    doc.text(`Current Risk Level: ${riskScore.toFixed(1)}% (${riskBadge.text})`, 14, 53)
+    doc.text(`System Health: ${healthPct}%`, 14, 59)
+    doc.text(`Biofilm Stage: ${biofilmStage.stage}`, 14, 65)
+    doc.text(`Last Maintenance: ${daysSinceMaintenance}`, 14, 71)
+
+    // Sensor Status Snapshot
+    doc.setFontSize(14)
+    doc.text("Sensor Status Snapshot", 14, 85)
+
+    const sensors = [
+      ['Parameter', 'Value', 'Status'],
+      ['pH Level', ph, paramStatus.ph === 'caution' ? 'Check Needed' : 'Normal'],
+      ['Temperature', `${temp}°C`, paramStatus.temp === 'caution' ? 'High' : 'Normal'],
+      ['Turbidity', `${turb} NTU`, paramStatus.turb === 'caution' ? 'High' : 'Normal'],
+      ['Flow Rate', `${flow} L/m`, paramStatus.flow === 'caution' ? 'Low' : 'Normal'],
+      ['TDS', `${tds} ppm`, paramStatus.tds === 'caution' ? 'High' : 'Normal'],
+    ]
+
+    autoTable(doc, {
+      startY: 90,
+      head: [sensors[0]],
+      body: sensors.slice(1),
+      theme: 'striped',
+      headStyles: { fillColor: [37, 99, 235] },
+      styles: { fontSize: 10 }
+    })
+
+    // Data Logs
+    doc.setFontSize(14)
+    doc.text("Recent Data Logs (Last 10 Readings)", 14, doc.lastAutoTable.finalY + 15)
+
+    const tableData = feeds.map(row => [
+      new Date(row.created_at).toLocaleTimeString(),
+      (Number(row.field1) + offsets.ph).toFixed(2),
+      (Number(row.field2) + offsets.temp).toFixed(1),
+      Number(row.field5).toFixed(2),
+      Number(row.field7).toFixed(1) + '%'
+    ])
+
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 20,
+      head: [['Time', 'pH', 'Temp (C)', 'Turbidity', 'Risk %']],
+      body: tableData,
+      theme: 'grid',
+      headStyles: { fillColor: [60, 60, 60] },
+      styles: { fontSize: 9 }
+    })
+
+    doc.save(`biofilm_risk_report_${new Date().toISOString().slice(0, 10)}.pdf`)
+  }
+
   const daysSinceMaintenance = useMemo(() => {
     if (!lastMaintenance) return 'Never'
     const diff = Date.now() - new Date(lastMaintenance).getTime()
@@ -531,7 +605,10 @@ export default function App() {
               <button onClick={handleExport} style={{ flex: 1, padding: '12px', background: 'var(--primary-gradient)', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '600', boxShadow: '0 4px 6px rgba(37, 99, 235, 0.2)' }}>
                 📥 Export CSV
               </button>
-              <button onClick={() => setShowSettings(false)} style={{ flex: 1, padding: '12px', background: 'transparent', border: '1px solid var(--glass-border)', color: 'var(--text-muted)', borderRadius: '12px', cursor: 'pointer', fontWeight: '600' }}>
+              <button onClick={generatePDF} style={{ flex: 1, padding: '12px', background: '#4b5563', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: '600', boxShadow: '0 4px 6px rgba(75, 85, 99, 0.2)' }}>
+                📄 PDF Report
+              </button>
+              <button onClick={() => setShowSettings(false)} style={{ flex: 0.5, padding: '12px', background: 'transparent', border: '1px solid var(--glass-border)', color: 'var(--text-muted)', borderRadius: '12px', cursor: 'pointer', fontWeight: '600' }}>
                 Close
               </button>
             </div>
