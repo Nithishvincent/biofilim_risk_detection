@@ -745,6 +745,33 @@ export default function App() {
           <div className="stat-value">{daysSinceMaintenance}</div>
           <div className="stat-sub">{lastMaintenance ? new Date(lastMaintenance).toLocaleDateString() : 'No record'}</div>
         </div>
+
+        <div className="stat-card animate-slide-up stagger-4 hover-scale" style={{ animationDelay: '0.6s' }}>
+          <h4>Water Volume</h4>
+          <div className="icon-wrapper blue" style={{ marginBottom: '12px' }}><Droplet size={20} /></div>
+          <div className="stat-value">{waterVolume.toLocaleString()} L</div>
+          <div className="stat-sub">System Capacity</div>
+        </div>
+
+        <div className="stat-card animate-slide-up stagger-4 hover-scale" style={{ animationDelay: '0.7s' }}>
+          <h4>Avg. Risk (1h)</h4>
+          <div className="icon-wrapper orange" style={{ marginBottom: '12px' }}><Activity size={20} /></div>
+          <div className="stat-value">{feeds.length > 0 ? (feeds.reduce((acc, f) => acc + (f.field7 ? Number(f.field7) : 0), 0) / feeds.length).toFixed(1) : '0.0'}%</div>
+          <div className="stat-sub">Recent Trend</div>
+        </div>
+
+        <div className="stat-card animate-slide-up stagger-4 hover-scale" style={{ animationDelay: '0.8s' }}>
+          <h4>Recommended Actions</h4>
+          <div className={`icon-wrapper ${treatments.length > 0 ? 'red' : 'green'}`} style={{ marginBottom: '12px' }}>
+            {treatments.length > 0 ? <AlertTriangle size={20} /> : <Check size={20} />}
+          </div>
+          <div className="stat-value" style={{ fontSize: '1rem' }}>
+            {treatments.length > 0 ? `${treatments.length} Action${treatments.length > 1 ? 's' : ''}` : 'None'}
+          </div>
+          <div className="stat-sub">
+            {treatments.length > 0 ? treatments[0].reason : 'System Normal'}
+          </div>
+        </div>
       </div>
 
       <div className="card rich-card chart-card animate-fade-in" style={{ marginTop: '32px', animationDelay: '0.4s' }}>
@@ -785,9 +812,13 @@ export default function App() {
                     (Number(turb) / 20) * 100,
                     (Number(tds) / 1000) * 100
                   ],
-                  backgroundColor: 'rgba(37, 99, 235, 0.2)',
-                  borderColor: '#2563eb',
+                  backgroundColor: theme === 'dark' ? 'rgba(96, 165, 250, 0.2)' : 'rgba(37, 99, 235, 0.2)',
+                  borderColor: theme === 'dark' ? '#60a5fa' : '#2563eb',
                   borderWidth: 2,
+                  pointBackgroundColor: theme === 'dark' ? '#60a5fa' : '#2563eb',
+                  pointBorderColor: '#fff',
+                  pointHoverBackgroundColor: '#fff',
+                  pointHoverBorderColor: theme === 'dark' ? '#60a5fa' : '#2563eb',
                 }]
               }}
               options={{
@@ -795,11 +826,26 @@ export default function App() {
                   r: {
                     suggestedMin: 0,
                     suggestedMax: 100,
-                    grid: { color: 'rgba(0,0,0,0.1)' },
-                    angleLines: { color: 'rgba(0,0,0,0.1)' }
+                    grid: { color: theme === 'dark' ? 'rgba(148, 163, 184, 0.2)' : 'rgba(0,0,0,0.1)' },
+                    angleLines: { color: theme === 'dark' ? 'rgba(148, 163, 184, 0.2)' : 'rgba(0,0,0,0.1)' },
+                    pointLabels: {
+                      color: theme === 'dark' ? '#cbd5e1' : '#64748b',
+                      font: { size: 12 }
+                    },
+                    ticks: {
+                      color: theme === 'dark' ? '#94a3b8' : '#64748b',
+                      backdropColor: 'transparent'
+                    }
                   }
                 },
-                plugins: { legend: { display: false } }
+                plugins: {
+                  legend: {
+                    display: true,
+                    labels: {
+                      color: theme === 'dark' ? '#cbd5e1' : '#64748b'
+                    }
+                  }
+                }
               }}
             />
           </div>
