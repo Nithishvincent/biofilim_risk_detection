@@ -550,9 +550,20 @@ export default function App() {
           <div className={`system-status ${connectionStatus === 'connected' ? 'system-active pulse-animation' : 'system-offline'}`}>
             {connectionStatus === 'connected' ? '● System Active' : '● System Inactive (Last Logged)'}
           </div>
-          <button className="theme-toggle" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} title="Toggle Theme">
-            {theme === 'light' ? '🌙' : '☀️'}
-          </button>
+          <div className="theme-toggle-wrapper" title="Toggle Theme">
+            <input
+              type="checkbox"
+              id="theme-toggle-checkbox"
+              className="theme-toggle-checkbox"
+              checked={theme === 'dark'}
+              onChange={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+            />
+            <label htmlFor="theme-toggle-checkbox" className="theme-toggle-label">
+              <span className="theme-toggle-slider">
+                <span className="theme-icon">{theme === 'light' ? '☀️' : '🌙'}</span>
+              </span>
+            </label>
+          </div>
           <button
             className="theme-toggle"
             onClick={() => setShowSettings(true)}
