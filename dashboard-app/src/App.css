@@ -6,6 +6,10 @@
   --glass-border: rgba(255, 255, 255, 0.4);
   --shadow-sm: 0 4px 6px rgba(0, 0, 0, 0.05);
   --shadow-md: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-premium: 0 20px 40px rgba(0, 0, 0, 0.08), 0 10px 20px rgba(0, 0, 0, 0.04), 0 0 1px rgba(0, 0, 0, 0.1);
+  --shadow-glow-blue: 0 0 40px rgba(59, 130, 246, 0.15), 0 8px 20px rgba(0, 0, 0, 0.1);
+  --shadow-glow-green: 0 0 40px rgba(16, 185, 129, 0.15), 0 8px 20px rgba(0, 0, 0, 0.1);
+  --shadow-glow-red: 0 0 40px rgba(239, 68, 68, 0.15), 0 8px 20px rgba(0, 0, 0, 0.1);
 
   --primary: #2563eb;
   --primary-gradient: linear-gradient(135deg, #60a5fa 0%, #3b82f6 50%, #2563eb 100%);
@@ -34,6 +38,10 @@
   --glass-border: rgba(148, 163, 184, 0.15);
   --shadow-sm: 0 4px 6px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 10px 25px rgba(0, 0, 0, 0.5), 0 0 40px rgba(59, 130, 246, 0.05);
+  --shadow-premium: 0 20px 50px rgba(0, 0, 0, 0.6), 0 10px 30px rgba(0, 0, 0, 0.4), 0 0 2px rgba(148, 163, 184, 0.1);
+  --shadow-glow-blue: 0 0 60px rgba(96, 165, 250, 0.3), 0 8px 20px rgba(0, 0, 0, 0.5);
+  --shadow-glow-green: 0 0 60px rgba(52, 211, 153, 0.3), 0 8px 20px rgba(0, 0, 0, 0.5);
+  --shadow-glow-red: 0 0 60px rgba(248, 113, 113, 0.3), 0 8px 20px rgba(0, 0, 0, 0.5);
 
   --primary-gradient: linear-gradient(135deg, #60a5fa 0%, #3b82f6 50%, #2563eb 100%);
   --success-gradient: linear-gradient(135deg, #6ee7b7 0%, #34d399 50%, #10b981 100%);
@@ -278,20 +286,44 @@ body {
 
 /* ========== CARDS ========== */
 .card {
+  position: relative;
   background: var(--bg-card);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius);
   padding: 28px;
-  box-shadow: var(--shadow-sm);
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  box-shadow: var(--shadow-premium);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   animation: fadeIn 0.6s ease-out forwards;
+  overflow: hidden;
+}
+
+/* Gradient border effect */
+.card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius);
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.1));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+.card:hover::before {
+  opacity: 1;
 }
 
 .card:hover {
-  transform: translateY(-4px);
-  box-shadow: var(--shadow-md);
+  transform: translateY(-6px) scale(1.01);
+  box-shadow: var(--shadow-premium), 0 0 60px rgba(59, 130, 246, 0.1);
+  border-color: rgba(148, 163, 184, 0.3);
 }
 
 .card h3 {
@@ -352,6 +384,8 @@ body {
   background-clip: text;
   -webkit-text-fill-color: transparent;
   margin-bottom: 8px;
+  filter: drop-shadow(0 2px 8px rgba(59, 130, 246, 0.3));
+  animation: float 3s ease-in-out infinite;
 }
 
 .badge {
@@ -533,7 +567,31 @@ button:active {
   height: 48px;
   border-radius: 12px;
   margin-bottom: 16px;
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.icon-wrapper::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  transform: translateX(-100%) translateY(-100%) rotate(45deg);
+  transition: transform 0.6s;
+}
+
+.icon-wrapper:hover::after {
+  transform: translateX(100%) translateY(100%) rotate(45deg);
+}
+
+.icon-wrapper:hover {
+  transform: scale(1.1) rotate(5deg);
+  box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 
 .icon-wrapper.blue {
@@ -583,6 +641,7 @@ button:active {
 }
 
 .stat-card {
+  position: relative;
   background: var(--bg-card);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius);
@@ -590,14 +649,34 @@ button:active {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.stat-card::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 100px;
+  height: 100px;
+  background: radial-gradient(circle at top right, rgba(59, 130, 246, 0.1), transparent 70%);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+.stat-card:hover::after {
+  opacity: 1;
 }
 
 .stat-card:hover {
-  transform: translateY(-4px);
-  box-shadow: var(--shadow-md);
+  transform: translateY(-8px) scale(1.02);
+  box-shadow: var(--shadow-premium);
+  border-color: rgba(148, 163, 184, 0.3);
 }
 
 .stat-card h4 {
@@ -615,6 +694,13 @@ button:active {
   color: var(--text-main);
   margin-bottom: 4px;
   line-height: 1.4;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+}
+
+.stat-card:hover .stat-value {
+  transform: scale(1.05);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
 }
 
 .stat-sub {
