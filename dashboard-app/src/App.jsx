@@ -33,6 +33,7 @@ import {
 } from './components/Icons'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { Analytics } from '@vercel/analytics/react'
 import './App.css'
 
 ChartJS.register(
@@ -1854,6 +1855,7 @@ export default function App() {
           </div>
         </div>
       )}
+      <Analytics />
     </div >
   )
 }
