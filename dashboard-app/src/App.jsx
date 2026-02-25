@@ -1386,7 +1386,7 @@ export default function App() {
           </button>
         </div>
 
-        {/* Humidity */}
+        {/* Humidity (informational only — not used in DSS) */}
         <div className={`param-card${!sensorEnabled.humidity ? ' sensor-disabled' : ''}`}>
           <h4>
             <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Cloud size={16} color={sensorEnabled.humidity ? 'var(--text-muted)' : 'var(--text-muted)'} /> Humidity</span>
@@ -1398,7 +1398,7 @@ export default function App() {
               <div className="bar"><span style={{ width: humidityBar + '%', background: 'var(--primary-gradient)' }} /></div>
               <div className="param-row">
                 <small className="param-value">{humidity !== '--' ? `${humidity} %` : humidity}</small>
-                <span className={`param-status param-status--${paramStatus.humidity || 'none'}`}>{paramStatus.humidity === 'normal' ? 'Normal' : '—'}</span>
+                <span className="param-status param-status--none">Info</span>
               </div>
             </>}
           <button className="sensor-toggle-mini" onClick={() => toggleSensor('humidity')} title={sensorEnabled.humidity ? 'Disable sensor' : 'Enable sensor'}>
